@@ -1,0 +1,44 @@
+# Example environment configuration for Proxmox Terraform
+# Copy this file to ~/.envrc and fill in your actual values
+#
+# The nix-shell will automatically source ~/.envrc on startup
+#
+# Usage:
+#   cp .envrc.example ~/.envrc
+#   # Edit ~/.envrc with your values or 1Password references
+
+# =============================================================================
+# Option A: Using 1Password CLI (recommended)
+# =============================================================================
+# First, create a "Proxmox" item in 1Password with these fields:
+#   - url: https://proxmox.example.com:8006/api2/json
+#   - token_id: terraform@pve!terraform-token
+#   - token_secret: your-api-token-secret
+#
+# Then use op read to fetch the secrets:
+
+export PM_API_URL=$(op read "op://Homelab/Proxmox/url")
+export PM_API_TOKEN_ID=$(op read "op://Homelab/Proxmox/token_id")
+export PM_API_TOKEN_SECRET=$(op read "op://Homelab/Proxmox/token_secret")
+export PM_TLS_INSECURE="true"
+
+# =============================================================================
+# Option B: Plain text (not recommended for shared machines)
+# =============================================================================
+# export PM_API_URL="https://proxmox.example.com:8006/api2/json"
+# export PM_API_TOKEN_ID="terraform@pve!terraform-token"
+# export PM_API_TOKEN_SECRET="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+# export PM_TLS_INSECURE="true"
+
+# =============================================================================
+# Optional settings
+# =============================================================================
+
+# Enable debug logging for Proxmox provider
+# export PM_LOG_ENABLE=true
+# export PM_LOG_FILE="terraform-provider-proxmox.log"
+# export PM_LOG_LEVELS_PROVIDER="debug"
+# export PM_LOG_LEVELS_API="debug"
+
+# Proxmox host for remote template creation
+# export PROXMOX_HOST="root@proxmox.example.com"
