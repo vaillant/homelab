@@ -70,7 +70,7 @@ On your Proxmox server:
 pveum user add terraform@pve
 
 # Create a role with necessary permissions
-pveum role add TerraformRole -privs "VM.Allocate VM.Clone VM.Config.CDROM VM.Config.CPU VM.Config.Cloudinit VM.Config.Disk VM.Config.HWType VM.Config.Memory VM.Config.Network VM.Config.Options VM.Audit VM.PowerMgmt Datastore.AllocateSpace Datastore.Audit Pool.Allocate Sys.Audit Sys.Console Sys.Modify"
+pveum role add TerraformRole -privs "VM.Allocate VM.Clone VM.Config.CDROM VM.Config.CPU VM.Config.Cloudinit VM.Config.Disk VM.Config.HWType VM.Config.Memory VM.Config.Network VM.Config.Options VM.Audit VM.PowerMgmt Datastore.AllocateSpace Datastore.Audit Pool.Allocate Pool.Audit Sys.Audit Sys.Console Sys.Modify"
 
 # Assign role to user
 pveum aclmod / -user terraform@pve -role TerraformRole
@@ -213,7 +213,6 @@ nixos_vms = {
       type    = "scsi"
       storage = "local-lvm"
       size    = "100G"
-      ssd     = 1
       discard = "on"
     }]
     ipconfig0 = "ip=10.0.0.101/24,gw=10.0.0.1"
@@ -274,13 +273,12 @@ disks = [
     type    = "scsi"
     storage = "local-lvm"
     size    = "32G"
-    ssd     = 1
+    discard = "on"
   },
   {
     type    = "scsi"
     storage = "nfs-storage"
     size    = "500G"
-    ssd     = 0
   }
 ]
 ```

@@ -1,8 +1,7 @@
 terraform {
   required_providers {
     proxmox = {
-      source  = "telmate/proxmox"
-      version = ">= 2.9.0"
+      source = "telmate/proxmox"
     }
   }
 }
@@ -35,6 +34,7 @@ resource "proxmox_vm_qemu" "nixos_vm" {
   dynamic "network" {
     for_each = var.networks
     content {
+      id     = network.key
       model  = network.value.model
       bridge = network.value.bridge
       tag    = lookup(network.value, "tag", null)
@@ -45,11 +45,11 @@ resource "proxmox_vm_qemu" "nixos_vm" {
   dynamic "disk" {
     for_each = var.disks
     content {
+      slot    = disk.key
       type    = disk.value.type
       storage = disk.value.storage
       size    = disk.value.size
       format  = lookup(disk.value, "format", "raw")
-      ssd     = lookup(disk.value, "ssd", 1)
       discard = lookup(disk.value, "discard", "on")
     }
   }

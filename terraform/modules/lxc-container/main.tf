@@ -1,8 +1,7 @@
 terraform {
   required_providers {
     proxmox = {
-      source  = "telmate/proxmox"
-      version = ">= 2.9.0"
+      source = "telmate/proxmox"
     }
   }
 }
@@ -23,8 +22,8 @@ resource "proxmox_lxc" "container" {
 
   # Root filesystem
   rootfs {
-    storage = var.rootfs_storage
-    size    = var.rootfs_size
+    storage = coalesce(var.rootfs_storage, "local-lvm")
+    size    = coalesce(var.rootfs_size, "8G")
   }
 
   # Network
@@ -41,7 +40,7 @@ resource "proxmox_lxc" "container" {
 
   # Additional mount points
   dynamic "mountpoint" {
-    for_each = var.mountpoints
+    for_each = coalesce(var.mountpoints, {})
     content {
       key     = mountpoint.key
       slot    = mountpoint.key
