@@ -1,3 +1,12 @@
+terraform {
+  required_providers {
+    proxmox = {
+      source  = "telmate/proxmox"
+      version = ">= 2.9.0"
+    }
+  }
+}
+
 resource "proxmox_lxc" "container" {
   hostname    = var.hostname
   target_node = var.target_node

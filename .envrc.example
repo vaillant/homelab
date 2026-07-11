@@ -22,6 +22,10 @@ export PM_API_TOKEN_ID=$(op read "op://Homelab/Proxmox/token_id")
 export PM_API_TOKEN_SECRET=$(op read "op://Homelab/Proxmox/token_secret")
 export PM_TLS_INSECURE="true"
 
+# Optional: Remove port from URL when on the same network as Proxmox
+# (useful if accessing via reverse proxy or direct HTTPS on port 443)
+# export PM_API_URL=$(echo "$PM_API_URL" | sed 's/:[0-9]*\//\//')
+
 # =============================================================================
 # Option B: Plain text (not recommended for shared machines)
 # =============================================================================
