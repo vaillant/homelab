@@ -8,7 +8,7 @@ help:
 	@echo ""
 	@echo "Available targets:"
 	@echo "  make check-env        - Check required environment variables and tools"
-	@echo "  make check-proxmox    - Test connection to Proxmox API"
+	@echo "  make check.           - Test connection to Proxmox API and environment"
 	@echo "  make init             - Initialize Terraform"
 	@echo "  make plan             - Show planned infrastructure changes"
 	@echo "  make apply            - Apply infrastructure changes"
@@ -31,7 +31,7 @@ help:
 	@echo "  export PM_TLS_INSECURE='true'"
 
 # Test connection to Proxmox API
-check-proxmox: check-env
+check: check-env
 	@echo "Testing Proxmox API connection..."
 	@curl -s -k -f \
 		-H "Authorization: PVEAPIToken=$(PM_API_TOKEN_ID)=$(PM_API_TOKEN_SECRET)" \
@@ -69,17 +69,17 @@ init:
 	cd terraform && tofu init
 
 # Plan infrastructure changes
-plan: check-env
+plan: check
 	@echo "Planning infrastructure changes..."
 	cd terraform && tofu plan
 
 # Apply infrastructure changes
-apply: check-env
+apply: check
 	@echo "Applying infrastructure changes..."
 	cd terraform && tofu apply
 
 # Apply with auto-approve (use with caution)
-apply-auto: check-env
+apply-auto: check
 	@echo "Applying infrastructure changes (auto-approve)..."
 	cd terraform && tofu apply -auto-approve
 
@@ -103,17 +103,17 @@ template-create:
 	./scripts/create-nixos-template.sh $(NODE) $(STORAGE) $(TEMPLATE_ID)
 
 # Show Terraform outputs
-output: check-env
+output: check
 	@echo "Terraform outputs:"
 	cd terraform && tofu output
 
 # Show Terraform state
-state-list: check-env
+state-list: check
 	@echo "Terraform state:"
 	cd terraform && tofu state list
 
 # Refresh Terraform state
-refresh: check-env
+refresh: check
 	@echo "Refreshing Terraform state..."
 	cd terraform && tofu refresh
 
