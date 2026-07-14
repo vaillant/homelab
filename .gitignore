@@ -35,6 +35,7 @@ Thumbs.db
 # Build artifacts
 result
 result-*
+nix/result
 
 # Logs
 *.log

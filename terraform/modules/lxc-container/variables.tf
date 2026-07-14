@@ -107,9 +107,9 @@ variable "password" {
 }
 
 variable "features_nesting" {
-  description = "Enable nesting (for Docker, etc.)"
+  description = "Enable nesting (required for NixOS, Docker, etc.)"
   type        = bool
-  default     = false
+  default     = true
 }
 
 variable "features_fuse" {

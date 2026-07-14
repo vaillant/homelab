@@ -1,4 +1,4 @@
-.PHONY: help init plan apply validate fmt clean template-create check-env check-proxmox
+.PHONY: help init plan apply validate fmt clean template-create check-env check-proxmox build-lxc upload-lxc
 
 # Default target
 help:
@@ -8,7 +8,11 @@ help:
 	@echo ""
 	@echo "Available targets:"
 	@echo "  make check-env        - Check required environment variables and tools"
-	@echo "  make check.           - Test connection to Proxmox API and environment"
+	@echo "  make check            - Test connection to Proxmox API and environment"
+	@echo ""
+	@echo "NixOS LXC image targets:"
+	@echo "  make build-lxc        - Build NixOS LXC image for Proxmox"
+	@echo "  make upload-lxc       - Upload LXC image to Proxmox (requires NODE=pve1)"
 	@echo "  make init             - Initialize Terraform"
 	@echo "  make plan             - Show planned infrastructure changes"
 	@echo "  make apply            - Apply infrastructure changes"
@@ -138,5 +142,40 @@ workspace:
 
 # Variables
 NODE ?= pve1
-STORAGE ?= local-lvm
+STORAGE ?= local
 TEMPLATE_ID ?= 9000
+LXC_IMAGE ?= proxmox-lxc-base
+
+# Build NixOS LXC image
+build-lxc:
+	@echo "Building NixOS LXC image..."
+	nix build ./nix#$(LXC_IMAGE) --out-link nix/result
+	@echo ""
+	@echo "Image built: $$(ls nix/result/tarball/)"
+	@echo "Upload with: make upload-lxc NODE=pve1"
+
+# Upload LXC image to Proxmox
+upload-lxc: check
+	@TARBALL_COUNT=$$(ls -1 nix/result/tarball/*.tar.xz 2>/dev/null | wc -l | tr -d ' '); \
+	if [ "$$TARBALL_COUNT" -eq 0 ]; then \
+		echo "ERROR: No .tar.xz files found. Run 'make build-lxc' first."; \
+		exit 1; \
+	elif [ "$$TARBALL_COUNT" -gt 1 ]; then \
+		echo "ERROR: Multiple tarballs found in nix/result/tarball/:"; \
+		ls -1 nix/result/tarball/*.tar.xz; \
+		echo "Please remove old builds and run 'make build-lxc' again."; \
+		exit 1; \
+	fi
+	@echo "Uploading NixOS LXC image to $(NODE)..."
+	@TARBALL=$$(ls nix/result/tarball/*.tar.xz); \
+	FILENAME=$$(basename $$TARBALL); \
+	curl -s -k -f \
+		-H "Authorization: PVEAPIToken=$(PM_API_TOKEN_ID)=$(PM_API_TOKEN_SECRET)" \
+		-H "Content-Type: multipart/form-data" \
+		-F "content=vztmpl" \
+		-F "filename=@$$TARBALL" \
+		"$(PM_API_URL)/nodes/$(NODE)/storage/$(STORAGE)/upload" \
+		| jq -r '"✓ Uploaded: \(.data)"' \
+		|| (echo "✗ Failed to upload template" && exit 1); \
+	echo ""; \
+	echo "Template available at: $(STORAGE):vztmpl/$$FILENAME"
