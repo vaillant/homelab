@@ -81,7 +81,7 @@ variable "disks" {
   }))
   default = [{
     type    = "scsi"
-    storage = "local-lvm"
+    storage = "local-zfs"
     size    = "32G"
     ssd     = 1
     discard = "on"

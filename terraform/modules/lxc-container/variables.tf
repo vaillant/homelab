@@ -58,7 +58,7 @@ variable "unprivileged" {
 variable "rootfs_storage" {
   description = "Storage for root filesystem"
   type        = string
-  default     = "local-lvm"
+  default     = "local-zfs"
 }
 
 variable "rootfs_size" {

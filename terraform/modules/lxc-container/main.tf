@@ -22,7 +22,7 @@ resource "proxmox_lxc" "container" {
 
   # Root filesystem
   rootfs {
-    storage = coalesce(var.rootfs_storage, "local-lvm")
+    storage = coalesce(var.rootfs_storage, "local-zfs")
     size    = coalesce(var.rootfs_size, "8G")
   }
 
