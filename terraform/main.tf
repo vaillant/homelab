@@ -59,11 +59,11 @@ module "lxc_containers" {
   swap   = lookup(each.value, "swap", 512)
 
   # Boot settings
-  onboot = lookup(each.value, "onboot", true)
-  start  = lookup(each.value, "start", true)
+  onboot = coalesce(each.value.onboot, true)
+  start  = coalesce(each.value.start, true)
 
   # Security
-  unprivileged = lookup(each.value, "unprivileged", true)
+  unprivileged = coalesce(each.value.unprivileged, true)
 
   # Storage
   rootfs_storage = lookup(each.value, "rootfs_storage", var.default_storage)
