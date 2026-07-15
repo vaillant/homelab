@@ -4,7 +4,7 @@
 	production-init production-plan production-apply production-output
 
 # Variables
-NODE ?= pve
+NODE ?= proxmox1
 STORAGE ?= local
 LXC_IMAGE ?= proxmox-lxc-base
 BUILDER ?= ssh://root@nix-builder
@@ -105,11 +105,15 @@ builder-init:
 
 builder-plan: check
 	@echo "Planning builder changes..."
-	cd terraform/env-1-builder && tofu plan
+	cd terraform/env-1-builder && tofu plan \
+		-var="target_node=$(NODE)" \
+		-var="ostemplate=$(STORAGE):vztmpl/nixos-$(NIXOS_VERSION)-lxc.tar.xz"
 
 builder-apply: check
 	@echo "Applying builder changes..."
-	cd terraform/env-1-builder && tofu apply
+	cd terraform/env-1-builder && tofu apply \
+		-var="target_node=$(NODE)" \
+		-var="ostemplate=$(STORAGE):vztmpl/nixos-$(NIXOS_VERSION)-lxc.tar.xz"
 
 builder-output:
 	cd terraform/env-1-builder && tofu output
@@ -161,11 +165,13 @@ production-init:
 
 production-plan: check
 	@echo "Planning production changes..."
-	cd terraform/env-2-production && tofu plan
+	cd terraform/env-2-production && tofu plan \
+		-var="default_storage=$(STORAGE)"
 
 production-apply: check
 	@echo "Applying production changes..."
-	cd terraform/env-2-production && tofu apply
+	cd terraform/env-2-production && tofu apply \
+		-var="default_storage=$(STORAGE)"
 
 production-output:
 	cd terraform/env-2-production && tofu output
