@@ -1,4 +1,14 @@
-.PHONY: help init plan apply validate fmt clean template-create check-env check-proxmox build-lxc upload-lxc download-nixos-lxc init-all plan-all apply-all
+.PHONY: help check check-env fmt \
+	get-nixos-lxc builder-init builder-plan builder-apply builder-output \
+	build-lxc upload-lxc \
+	production-init production-plan production-apply production-output
+
+# Variables
+NODE ?= pve
+STORAGE ?= local
+LXC_IMAGE ?= proxmox-lxc-base
+BUILDER ?= ssh://root@nix-builder
+NIXOS_VERSION ?= 24.11
 
 # Default target
 help:
@@ -6,42 +16,37 @@ help:
 	@echo ""
 	@echo "⚠️  IMPORTANT: Run 'nix-shell' first to load required tools"
 	@echo ""
-	@echo "Available targets:"
-	@echo "  make check-env          - Check required environment variables and tools"
-	@echo "  make check              - Test connection to Proxmox API and environment"
+	@echo "Phase 1: Deploy builder"
+	@echo "  make get-nixos-lxc    - Download and upload prebuilt NixOS LXC from Hydra"
+	@echo "  make builder-init     - Initialize builder environment"
+	@echo "  make builder-plan     - Plan builder changes"
+	@echo "  make builder-apply    - Apply builder changes"
+	@echo "  make builder-output   - Show builder outputs"
 	@echo ""
-	@echo "NixOS LXC image targets:"
-	@echo "  make download-nixos-lxc - Download prebuilt NixOS LXC image from Hydra"
-	@echo "  make build-lxc          - Build NixOS LXC image (uses BUILDER=ssh://root@nix-builder)"
-	@echo "  make upload-lxc         - Upload LXC image to Proxmox (uses NODE=pve1, STORAGE=local)"
+	@echo "Phase 2: Build NixOS image"
+	@echo "  make build-lxc        - Build custom NixOS LXC image"
+	@echo "  make upload-lxc       - Upload LXC image to Proxmox"
 	@echo ""
-	@echo "Terraform targets (use ENV=env-1-builder or ENV=env-2-production):"
-	@echo "  make init               - Initialize Terraform for ENV (default: env-2-production)"
-	@echo "  make plan               - Show planned changes for ENV"
-	@echo "  make apply              - Apply changes for ENV"
-	@echo "  make validate           - Validate Terraform configuration for ENV"
-	@echo "  make output             - Show Terraform outputs for ENV"
-	@echo "  make init-all           - Initialize all environments"
-	@echo "  make plan-all           - Plan all environments"
-	@echo "  make apply-all          - Apply all environments"
+	@echo "Phase 3: Deploy production"
+	@echo "  make production-init    - Initialize production environment"
+	@echo "  make production-plan    - Plan production changes"
+	@echo "  make production-apply   - Apply production changes"
+	@echo "  make production-output  - Show production outputs"
 	@echo ""
-	@echo "Other targets:"
-	@echo "  make fmt                - Format Terraform files"
-	@echo "  make template-create    - Create NixOS template in Proxmox"
-	@echo "  make clean              - Clean Terraform cache (preserves state)"
+	@echo "Utility targets:"
+	@echo "  make check-env        - Check required tools"
+	@echo "  make check            - Test Proxmox API connection"
+	@echo "  make fmt              - Format Terraform files"
 	@echo ""
 	@echo "Environment variables required:"
 	@echo "  PM_API_URL           - Proxmox API URL"
 	@echo "  PM_API_TOKEN_ID      - Proxmox API token ID"
 	@echo "  PM_API_TOKEN_SECRET  - Proxmox API token secret"
-	@echo ""
-	@echo "Example .envrc file:"
-	@echo "  export PM_API_URL='https://proxmox.example.com:8006/api2/json'"
-	@echo "  export PM_API_TOKEN_ID='terraform@pve!terraform-token'"
-	@echo "  export PM_API_TOKEN_SECRET='your-secret-here'"
-	@echo "  export PM_TLS_INSECURE='true'"
 
-# Test connection to Proxmox API
+#
+# Utility targets
+#
+
 check: check-env
 	@echo "Testing Proxmox API connection..."
 	@curl -s -k -f \
@@ -49,19 +54,13 @@ check: check-env
 		"$(PM_API_URL)/version" | jq -r '"✓ Connected to Proxmox VE v\(.data.version) (\(.data.release))"' \
 		|| (echo "✗ Failed to connect to Proxmox API" && exit 1)
 
-# Check if required tools and environment variables are set
 check-env:
 	@echo "Checking required tools..."
 	@command -v nix >/dev/null 2>&1 || \
-		(echo "ERROR: nix is not installed" && \
-		 echo "Install from: https://nixos.org/download.html" && \
-		 echo "Quick install: sh <(curl -L https://nixos.org/nix/install) --daemon" && \
-		 exit 1)
+		(echo "ERROR: nix is not installed" && exit 1)
 	@echo "✓ nix is installed"
 	@command -v tofu >/dev/null 2>&1 || \
-		(echo "ERROR: tofu (OpenTofu) is not available" && \
-		 echo "Run 'nix-shell' to enter the development environment" && \
-		 exit 1)
+		(echo "ERROR: tofu (OpenTofu) is not available. Run 'nix-shell'" && exit 1)
 	@echo "✓ tofu (OpenTofu) is available"
 	@echo ""
 	@echo "Checking environment variables..."
@@ -74,110 +73,59 @@ check-env:
 	@echo ""
 	@echo "✅ All checks passed!"
 
-# Initialize Terraform
-init:
-	@echo "Initializing Terraform..."
-	cd terraform && tofu init
-
-# Plan infrastructure changes
-plan: check
-	@echo "Planning infrastructure changes..."
-	cd terraform && tofu plan
-
-# Apply infrastructure changes
-apply: check
-	@echo "Applying infrastructure changes..."
-	cd terraform && tofu apply
-
-apply-nix-builder:
-	cd terraform && tofu apply -target='module.lxc_containers["nix-builder"]'
-
-# Apply with auto-approve (use with caution)
-apply-auto: check
-	@echo "Applying infrastructure changes (auto-approve)..."
-	cd terraform && tofu apply -auto-approve
-
-# Validate Terraform configuration
-validate:
-	@echo "Validating Terraform configuration..."
-	cd terraform && tofu validate
-
-# Format Terraform files
 fmt:
 	@echo "Formatting Terraform files..."
 	cd terraform && tofu fmt -recursive
 
-# Create NixOS template
-template-create:
-	@echo "Creating NixOS template..."
-	@if [ -z "$(NODE)" ]; then \
-		echo "Usage: make template-create NODE=pve1 STORAGE=local-lvm TEMPLATE_ID=9000"; \
-		exit 1; \
-	fi
-	./scripts/create-nixos-template.sh $(NODE) $(STORAGE) $(TEMPLATE_ID)
+#
+# Phase 1: Deploy builder
+#
 
-# Show Terraform outputs
-output: check
-	@echo "Terraform outputs:"
-	cd terraform && tofu output
-
-# Show Terraform state
-state-list: check
-	@echo "Terraform state:"
-	cd terraform && tofu state list
-
-# Refresh Terraform state
-refresh: check
-	@echo "Refreshing Terraform state..."
-	cd terraform && tofu refresh
-
-# Clean Terraform cache (preserves state files)
-clean:
-	@echo "Cleaning Terraform cache..."
-	rm -rf terraform/.terraform
-	rm -f terraform/.terraform.lock.hcl
-	@echo "✓ Cleaned (state files preserved)"
-
-# Quick setup: init + plan
-setup: init plan
-	@echo ""
-	@echo "========================================"
-	@echo "Setup complete! Review the plan above."
-	@echo "Run 'make apply' to create the infrastructure."
-	@echo "========================================"
-
-# Show current Terraform workspace
-workspace:
-	cd terraform && tofu workspace show
-
-# Variables
-NODE ?= pve1
-STORAGE ?= local
-TEMPLATE_ID ?= 9000
-LXC_IMAGE ?= proxmox-lxc-base
-BUILDER ?= ssh://root@nix-builder
-NIXOS_VERSION ?= 24.11
-
-# Download prebuilt NixOS LXC image from Hydra
-download-nixos-lxc:
+get-nixos-lxc: check
 	@echo "Downloading NixOS $(NIXOS_VERSION) LXC image from Hydra..."
 	@mkdir -p nix/result/tarball
 	curl -L -o nix/result/tarball/nixos-$(NIXOS_VERSION)-lxc.tar.xz \
 		"https://hydra.nixos.org/job/nixos/release-$(NIXOS_VERSION)/nixos.proxmoxLXC.x86_64-linux/latest/download-by-type/file/system-tarball"
 	@echo ""
-	@echo "Downloaded: nix/result/tarball/nixos-$(NIXOS_VERSION)-lxc.tar.xz"
-	@echo "Upload with: make upload-lxc NODE=pve1"
+	@echo "Uploading to Proxmox..."
+	@curl -s -k -f \
+		-H "Authorization: PVEAPIToken=$(PM_API_TOKEN_ID)=$(PM_API_TOKEN_SECRET)" \
+		-H "Content-Type: multipart/form-data" \
+		-F "content=vztmpl" \
+		-F "filename=@nix/result/tarball/nixos-$(NIXOS_VERSION)-lxc.tar.xz" \
+		"$(PM_API_URL)/nodes/$(NODE)/storage/$(STORAGE)/upload" \
+		| jq -r '"✓ Uploaded: \(.data)"' \
+		|| (echo "✗ Failed to upload template" && exit 1)
+	@echo ""
+	@echo "Template available at: $(STORAGE):vztmpl/nixos-$(NIXOS_VERSION)-lxc.tar.xz"
 
-# Build NixOS LXC image
+builder-init:
+	@echo "Initializing builder environment..."
+	cd terraform/env-1-builder && tofu init
+
+builder-plan: check
+	@echo "Planning builder changes..."
+	cd terraform/env-1-builder && tofu plan
+
+builder-apply: check
+	@echo "Applying builder changes..."
+	cd terraform/env-1-builder && tofu apply
+
+builder-output:
+	cd terraform/env-1-builder && tofu output
+
+#
+# Phase 2: Build NixOS image
+#
+
 build-lxc:
 	@echo "Building NixOS LXC image$(if $(BUILDER), on $(BUILDER),)..."
 	nix build ./nix#$(LXC_IMAGE) --out-link nix/result \
 		$(if $(BUILDER),--builders '$(BUILDER) x86_64-linux - 4 1 big-parallel')
 	@echo ""
 	@echo "Image built: $$(ls nix/result/tarball/)"
-	@echo "Upload with: make upload-lxc NODE=pve1"
+	@echo "Upload with: make upload-lxc"
 
-# Upload LXC image to Proxmox
 upload-lxc: check
 	@TARBALL_COUNT=$$(ls -1 nix/result/tarball/*.tar.xz 2>/dev/null | wc -l | tr -d ' '); \
 	if [ "$$TARBALL_COUNT" -eq 0 ]; then \
@@ -202,3 +150,22 @@ upload-lxc: check
 		|| (echo "✗ Failed to upload template" && exit 1); \
 	echo ""; \
 	echo "Template available at: $(STORAGE):vztmpl/$$FILENAME"
+
+#
+# Phase 3: Deploy production
+#
+
+production-init:
+	@echo "Initializing production environment..."
+	cd terraform/env-2-production && tofu init
+
+production-plan: check
+	@echo "Planning production changes..."
+	cd terraform/env-2-production && tofu plan
+
+production-apply: check
+	@echo "Applying production changes..."
+	cd terraform/env-2-production && tofu apply
+
+production-output:
+	cd terraform/env-2-production && tofu output

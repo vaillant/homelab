@@ -1,0 +1,49 @@
+# Production environment configuration
+# Copy to terraform.tfvars and adjust for your setup
+
+default_storage = "local-zfs"
+default_bridge  = "vmbr0"
+
+nixos_template = "nixos-template"
+
+ssh_public_keys = <<-EOT
+ssh-ed25519 AAAAC3Nza... user@host
+EOT
+
+# Define NixOS VMs
+nixos_vms = {
+  "nixos-vm-01" = {
+    target_node = "pve"
+    description = "NixOS development VM"
+    cores       = 4
+    memory      = 4096
+    balloon     = 2048
+    disks = [{
+      type    = "scsi"
+      storage = "local-zfs"
+      size    = "64G"
+      ssd     = 1
+      discard = "on"
+    }]
+    ipconfig0 = "ip=dhcp"
+  }
+}
+
+# Define LXC containers (excluding nix-builder, which is in env-1-builder)
+lxc_containers = {
+  "docker-host" = {
+    target_node = "pve"
+    ostemplate  = "local:vztmpl/ubuntu-22.04-standard_22.04-1_amd64.tar.zst"
+    description = "Docker host container"
+    cores       = 2
+    memory      = 2048
+    swap        = 1024
+    rootfs_size = "16G"
+    features_nesting = true
+    networks = [{
+      name   = "eth0"
+      bridge = "vmbr0"
+      ip     = "dhcp"
+    }]
+  }
+}
