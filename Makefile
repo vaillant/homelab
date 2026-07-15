@@ -1,4 +1,4 @@
-.PHONY: help init plan apply validate fmt clean template-create check-env check-proxmox build-lxc upload-lxc
+.PHONY: help init plan apply validate fmt clean template-create check-env check-proxmox build-lxc upload-lxc download-nixos-lxc init-all plan-all apply-all
 
 # Default target
 help:
@@ -7,21 +7,28 @@ help:
 	@echo "⚠️  IMPORTANT: Run 'nix-shell' first to load required tools"
 	@echo ""
 	@echo "Available targets:"
-	@echo "  make check-env        - Check required environment variables and tools"
-	@echo "  make check            - Test connection to Proxmox API and environment"
+	@echo "  make check-env          - Check required environment variables and tools"
+	@echo "  make check              - Test connection to Proxmox API and environment"
 	@echo ""
 	@echo "NixOS LXC image targets:"
-	@echo "  make build-lxc        - Build NixOS LXC image for Proxmox"
-	@echo "  make upload-lxc       - Upload LXC image to Proxmox (requires NODE=pve1)"
-	@echo "  make init             - Initialize Terraform"
-	@echo "  make plan             - Show planned infrastructure changes"
-	@echo "  make apply            - Apply infrastructure changes"
-	@echo "  make validate         - Validate Terraform configuration"
-	@echo "  make fmt              - Format Terraform files"
-	@echo "  make template-create  - Create NixOS template in Proxmox"
-	@echo "  make clean            - Clean Terraform cache (preserves state)"
-	@echo "  make output           - Show Terraform outputs"
-	@echo "  make setup            - Quick setup: init + plan"
+	@echo "  make download-nixos-lxc - Download prebuilt NixOS LXC image from Hydra"
+	@echo "  make build-lxc          - Build NixOS LXC image (uses BUILDER=ssh://root@nix-builder)"
+	@echo "  make upload-lxc         - Upload LXC image to Proxmox (uses NODE=pve1, STORAGE=local)"
+	@echo ""
+	@echo "Terraform targets (use ENV=env-1-builder or ENV=env-2-production):"
+	@echo "  make init               - Initialize Terraform for ENV (default: env-2-production)"
+	@echo "  make plan               - Show planned changes for ENV"
+	@echo "  make apply              - Apply changes for ENV"
+	@echo "  make validate           - Validate Terraform configuration for ENV"
+	@echo "  make output             - Show Terraform outputs for ENV"
+	@echo "  make init-all           - Initialize all environments"
+	@echo "  make plan-all           - Plan all environments"
+	@echo "  make apply-all          - Apply all environments"
+	@echo ""
+	@echo "Other targets:"
+	@echo "  make fmt                - Format Terraform files"
+	@echo "  make template-create    - Create NixOS template in Proxmox"
+	@echo "  make clean              - Clean Terraform cache (preserves state)"
 	@echo ""
 	@echo "Environment variables required:"
 	@echo "  PM_API_URL           - Proxmox API URL"
@@ -81,6 +88,9 @@ plan: check
 apply: check
 	@echo "Applying infrastructure changes..."
 	cd terraform && tofu apply
+
+apply-nix-builder:
+	cd terraform && tofu apply -target='module.lxc_containers["nix-builder"]'
 
 # Apply with auto-approve (use with caution)
 apply-auto: check
@@ -145,11 +155,24 @@ NODE ?= pve1
 STORAGE ?= local
 TEMPLATE_ID ?= 9000
 LXC_IMAGE ?= proxmox-lxc-base
+BUILDER ?= ssh://root@nix-builder
+NIXOS_VERSION ?= 24.11
+
+# Download prebuilt NixOS LXC image from Hydra
+download-nixos-lxc:
+	@echo "Downloading NixOS $(NIXOS_VERSION) LXC image from Hydra..."
+	@mkdir -p nix/result/tarball
+	curl -L -o nix/result/tarball/nixos-$(NIXOS_VERSION)-lxc.tar.xz \
+		"https://hydra.nixos.org/job/nixos/release-$(NIXOS_VERSION)/nixos.proxmoxLXC.x86_64-linux/latest/download-by-type/file/system-tarball"
+	@echo ""
+	@echo "Downloaded: nix/result/tarball/nixos-$(NIXOS_VERSION)-lxc.tar.xz"
+	@echo "Upload with: make upload-lxc NODE=pve1"
 
 # Build NixOS LXC image
 build-lxc:
-	@echo "Building NixOS LXC image..."
-	nix build ./nix#$(LXC_IMAGE) --out-link nix/result
+	@echo "Building NixOS LXC image$(if $(BUILDER), on $(BUILDER),)..."
+	nix build ./nix#$(LXC_IMAGE) --out-link nix/result \
+		$(if $(BUILDER),--builders '$(BUILDER) x86_64-linux - 4 1 big-parallel')
 	@echo ""
 	@echo "Image built: $$(ls nix/result/tarball/)"
 	@echo "Upload with: make upload-lxc NODE=pve1"
