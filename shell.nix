@@ -6,7 +6,7 @@
 pkgs.mkShell {
   buildInputs = with pkgs; [
     opentofu
-    gnumake
+    go-task
     _1password-cli    # 1Password CLI (unfree), comment out if you do not use 1Password
 
     # Optional but useful tools
@@ -37,6 +37,6 @@ pkgs.mkShell {
 
     echo ""
     echo "Homelab Infrastructure Development Environment"
-    echo "As quick start, run: make help"
+    echo "Run 'task --list' to see available tasks"
   '';
 }

@@ -1,43 +1,54 @@
 terraform {
   required_providers {
     proxmox = {
-      source = "telmate/proxmox"
+      source = "bpg/proxmox"
     }
   }
 }
 
-resource "proxmox_vm_qemu" "nixos_vm" {
+resource "proxmox_virtual_environment_vm" "nixos_vm" {
   name        = var.vm_name
-  target_node = var.target_node
-  desc        = var.description
+  node_name   = var.target_node
+  description = var.description
 
   # Clone from NixOS template
-  clone = var.template_name
+  clone {
+    vm_id = var.template_id
+  }
 
-  # VM Settings
-  agent    = 1
-  cores    = var.cores
-  sockets  = var.sockets
-  memory   = var.memory
-  balloon  = var.balloon
-  onboot   = var.onboot
-  startup  = var.startup
+  # CPU
+  cpu {
+    cores   = var.cores
+    sockets = var.sockets
+  }
+
+  # Memory
+  memory {
+    dedicated = var.memory
+    floating  = var.balloon
+  }
 
   # Boot settings
-  boot     = "order=scsi0"
-  scsihw   = "virtio-scsi-single"
+  on_boot = var.onboot
+  started = true
 
   # Enable QEMU guest agent
-  qemu_os = "l26"  # Linux kernel 2.6+
+  agent {
+    enabled = true
+  }
+
+  # Operating system
+  operating_system {
+    type = "l26"  # Linux kernel 2.6+
+  }
 
   # Network
-  dynamic "network" {
+  dynamic "network_device" {
     for_each = var.networks
     content {
-      id     = network.key
-      model  = network.value.model
-      bridge = network.value.bridge
-      tag    = lookup(network.value, "tag", null)
+      model   = network_device.value.model
+      bridge  = network_device.value.bridge
+      vlan_id = lookup(network_device.value, "tag", null)
     }
   }
 
@@ -45,27 +56,34 @@ resource "proxmox_vm_qemu" "nixos_vm" {
   dynamic "disk" {
     for_each = var.disks
     content {
-      slot    = disk.key
-      type    = disk.value.type
-      storage = disk.value.storage
-      size    = disk.value.size
-      format  = lookup(disk.value, "format", "raw")
-      discard = lookup(disk.value, "discard", "on")
+      interface    = "${disk.value.type}${disk.key}"
+      datastore_id = disk.value.storage
+      size         = tonumber(regex("^(\\d+)", disk.value.size)[0])
+      file_format  = lookup(disk.value, "format", "raw")
+      discard      = lookup(disk.value, "discard", "on")
+      ssd          = lookup(disk.value, "ssd", 0) == 1 ? true : false
     }
   }
 
   # Cloud-init configuration
-  os_type   = "cloud-init"
-  ipconfig0 = var.ipconfig0
+  initialization {
+    ip_config {
+      ipv4 {
+        address = var.ipconfig0
+      }
+    }
 
-  ciuser     = var.ci_user
-  cipassword = var.ci_password
-  sshkeys    = var.ssh_keys
+    user_account {
+      username = var.ci_user
+      password = var.ci_password
+      keys     = var.ssh_keys != "" ? split("\n", var.ssh_keys) : []
+    }
+  }
 
   # Lifecycle
   lifecycle {
     ignore_changes = [
-      network,
+      network_device,
     ]
   }
 }

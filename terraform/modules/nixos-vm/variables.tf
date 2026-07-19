@@ -14,10 +14,9 @@ variable "description" {
   default     = "NixOS VM managed by Terraform"
 }
 
-variable "template_name" {
-  description = "Name of the NixOS template to clone from"
-  type        = string
-  default     = "nixos-template"
+variable "template_id" {
+  description = "VM ID of the NixOS template to clone from"
+  type        = number
 }
 
 variable "cores" {

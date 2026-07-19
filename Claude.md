@@ -18,6 +18,10 @@ This file documents architectural decisions and guidelines for Claude Code.
 
 **Decision:** Use Tofu as Terraform engine. Use the [bpg/proxmox](https://registry.terraform.io/providers/bpg/proxmox) provider instead of telmate/proxmox. The bpg provider is actively maintained, has better documentation, and uses environment variables `PROXMOX_VE_ENDPOINT` and `PROXMOX_VE_API_TOKEN` for authentication.
 
+## NixOS Builder: Debian
+
+It was more or less impossible to find a stable NixOS VM Image supporting also cloud-init, two LLM's and me failed. So I selected debian to build NixOS imagaes.
+
 ## Deployment Phases
 
 1. **Phase 1: Deploy builder** - Set up NixOS build infrastructure

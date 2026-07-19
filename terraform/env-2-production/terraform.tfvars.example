@@ -5,7 +5,7 @@
 
 default_bridge = "vmbr0"
 
-nixos_template = "nixos-template"
+nixos_template_id = 9000
 
 ssh_public_keys = <<-EOT
 ssh-ed25519 AAAAC3Nza... user@host

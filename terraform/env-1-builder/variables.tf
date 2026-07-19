@@ -1,13 +1,25 @@
 variable "target_node" {
   description = "Proxmox node to create the builder on"
   type        = string
-  default     = "pve"
+  default     = "proxmox1"
 }
 
-variable "ostemplate" {
-  description = "NixOS LXC template"
+variable "nixos_version" {
+  description = "NixOS version to download"
   type        = string
-  default     = "local:vztmpl/nixos-24.11-lxc.tar.xz"
+  default     = "24.11"
+}
+
+variable "storage" {
+  description = "Storage for ISO/image files"
+  type        = string
+  default     = "local"
+}
+
+variable "disk_storage" {
+  description = "Storage for VM disks"
+  type        = string
+  default     = "local-zfs"
 }
 
 variable "cores" {
@@ -22,36 +34,31 @@ variable "memory" {
   default     = 8192
 }
 
-variable "swap" {
-  description = "Swap in MB"
+variable "disk_size" {
+  description = "Root disk size in GB"
   type        = number
-  default     = 4096
+  default     = 64
 }
 
-variable "rootfs_size" {
-  description = "Root filesystem size"
+variable "bridge" {
+  description = "Network bridge"
   type        = string
-  default     = "64G"
+  default     = "vmbr0"
 }
 
-variable "networks" {
-  description = "Network configuration"
-  type = list(object({
-    name   = string
-    bridge = string
-    ip     = optional(string)
-    gw     = optional(string)
-    tag    = optional(number)
-  }))
-  default = [{
-    name   = "eth0"
-    bridge = "vmbr0"
-    ip     = "dhcp"
-  }]
+variable "ip_address" {
+  description = "IP address (CIDR notation or 'dhcp')"
+  type        = string
+  default     = "dhcp"
 }
 
-variable "ssh_public_keys" {
-  description = "SSH public keys"
+variable "gateway" {
+  description = "Gateway IP (optional, not needed for DHCP)"
   type        = string
   default     = ""
+}
+
+variable "ssh_pubkey" {
+  description = "SSH public key for cloud-init"
+  type        = string
 }

@@ -6,10 +6,10 @@ module "nixos_vms" {
   source   = "../modules/nixos-vm"
   for_each = var.nixos_vms
 
-  vm_name       = each.key
-  target_node   = each.value.target_node
-  description   = lookup(each.value, "description", "NixOS VM managed by Terraform")
-  template_name = var.nixos_template
+  vm_name     = each.key
+  target_node = each.value.target_node
+  description = lookup(each.value, "description", "NixOS VM managed by Terraform")
+  template_id = var.nixos_template_id
 
   # Resources
   cores   = lookup(each.value, "cores", 2)

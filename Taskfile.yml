@@ -14,6 +14,9 @@ vars:
   LXC_IMAGE: '{{.LXC_IMAGE | default "proxmox-lxc-base"}}'
   BUILDER: '{{.BUILDER | default "ssh://root@nix-builder"}}'
   NIXOS_VERSION: '{{.NIXOS_VERSION | default "24.11"}}'
+  # SSH public key from 1Password for cloud-init
+  SSH_PUBKEY:
+    sh: op read "op://Homelab/Homelab SSH Key/public key"
 
 tasks:
   default:
@@ -64,29 +67,6 @@ tasks:
   # Phase 1: Deploy builder
   #
 
-  get-nixos-lxc:
-    desc: Download and upload prebuilt NixOS LXC from Hydra
-    deps: [check]
-    cmds:
-      - echo "Downloading NixOS {{.NIXOS_VERSION}} LXC image from Hydra..."
-      - mkdir -p nix/result/tarball
-      - |
-        curl -L -o nix/result/tarball/nixos-{{.NIXOS_VERSION}}-lxc.tar.xz \
-          "https://hydra.nixos.org/job/nixos/release-{{.NIXOS_VERSION}}/nixos.proxmoxLXC.x86_64-linux/latest/download-by-type/file/system-tarball"
-      - echo ""
-      - echo "Uploading to Proxmox..."
-      - |
-        curl -s -k -f \
-          -H "Authorization: PVEAPIToken=$PROXMOX_VE_API_TOKEN" \
-          -H "Content-Type: multipart/form-data" \
-          -F "content=vztmpl" \
-          -F "filename=@nix/result/tarball/nixos-{{.NIXOS_VERSION}}-lxc.tar.xz" \
-          "${PROXMOX_VE_ENDPOINT}api2/json/nodes/{{.NODE}}/storage/{{.STORAGE}}/upload" \
-          | jq -r '"✓ Uploaded: \(.data)"' \
-          || (echo "✗ Failed to upload template" && exit 1)
-      - echo ""
-      - 'echo "Template available at: {{.STORAGE}}:vztmpl/nixos-{{.NIXOS_VERSION}}-lxc.tar.xz"'
-
   builder-init:
     desc: Initialize builder environment
     dir: terraform/env-1-builder
@@ -101,7 +81,9 @@ tasks:
       - |
         tofu plan \
           -var="target_node={{.NODE}}" \
-          -var="ostemplate={{.STORAGE}}:vztmpl/nixos-{{.NIXOS_VERSION}}-lxc.tar.xz"
+          -var="storage={{.STORAGE}}" \
+          -var="nixos_version={{.NIXOS_VERSION}}" \
+          -var="ssh_pubkey={{.SSH_PUBKEY}}"
 
   builder-apply:
     desc: Apply builder changes
@@ -109,9 +91,11 @@ tasks:
     dir: terraform/env-1-builder
     cmds:
       - |
-        tofu apply \
+        tofu apply -auto-approve \
           -var="target_node={{.NODE}}" \
-          -var="ostemplate={{.STORAGE}}:vztmpl/nixos-{{.NIXOS_VERSION}}-lxc.tar.xz"
+          -var="storage={{.STORAGE}}" \
+          -var="nixos_version={{.NIXOS_VERSION}}" \
+          -var="ssh_pubkey={{.SSH_PUBKEY}}"
 
   builder-output:
     desc: Show builder outputs

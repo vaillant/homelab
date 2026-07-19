@@ -16,10 +16,10 @@ variable "ssh_public_keys" {
   default     = ""
 }
 
-variable "nixos_template" {
-  description = "Name of the NixOS VM template"
-  type        = string
-  default     = "nixos-template"
+variable "nixos_template_id" {
+  description = "VM ID of the NixOS template to clone from"
+  type        = number
+  default     = 9000
 }
 
 variable "nixos_vms" {

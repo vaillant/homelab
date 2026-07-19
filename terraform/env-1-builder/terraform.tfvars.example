@@ -1,20 +1,19 @@
-# NixOS builder environment configuration
+# NixOS builder VM configuration
 # Copy to terraform.tfvars and adjust for your setup
 #
-# Note: target_node and ostemplate are provided via Makefile variables:
-#   NODE, STORAGE, NIXOS_VERSION
+# Note: Variables are provided via Taskfile:
+#   target_node, storage, nixos_version, ssh_pubkey
 
-cores       = 4
-memory      = 8192
-swap        = 4096
-rootfs_size = "64G"
+# VM resources
+cores     = 4
+memory    = 8192
+disk_size = 64
 
-networks = [{
-  name   = "eth0"
-  bridge = "vmbr0"
-  ip     = "dhcp"
-}]
+# Storage
+storage      = "local"       # For ISO/image files
+disk_storage = "local-zfs"   # For VM disks
 
-ssh_public_keys = <<-EOT
-ssh-ed25519 AAAAC3Nza... user@host
-EOT
+# Network
+bridge     = "vmbr0"
+ip_address = "dhcp"          # Or use CIDR notation: "10.0.0.100/24"
+gateway    = ""              # Required if using static IP

@@ -1,60 +1,71 @@
 terraform {
   required_providers {
     proxmox = {
-      source = "telmate/proxmox"
+      source = "bpg/proxmox"
     }
   }
 }
 
-resource "proxmox_lxc" "container" {
-  hostname    = var.hostname
-  target_node = var.target_node
-  ostemplate  = var.ostemplate
+resource "proxmox_virtual_environment_container" "container" {
+  node_name   = var.target_node
   description = var.description
 
-  # Container settings
-  cores      = var.cores
-  memory     = var.memory
-  swap       = var.swap
-  onboot     = var.onboot
-  start      = var.start
-  unprivileged = var.unprivileged
-
-  # Root filesystem
-  rootfs {
-    storage = coalesce(var.rootfs_storage, "local-zfs")
-    size    = coalesce(var.rootfs_size, "8G")
+  # Operating system template
+  operating_system {
+    template_file_id = var.ostemplate
+    type             = "nixos"
   }
 
-  # Network
-  dynamic "network" {
+  # Initialization
+  initialization {
+    hostname = var.hostname
+
+    dynamic "ip_config" {
+      for_each = var.networks
+      content {
+        ipv4 {
+          address = lookup(ip_config.value, "ip", null) == "dhcp" ? "dhcp" : lookup(ip_config.value, "ip", "dhcp")
+          gateway = lookup(ip_config.value, "gw", null)
+        }
+      }
+    }
+  }
+
+  # CPU
+  cpu {
+    cores = var.cores
+  }
+
+  # Memory
+  memory {
+    dedicated = var.memory
+    swap      = var.swap
+  }
+
+  # Root filesystem
+  disk {
+    datastore_id = coalesce(var.rootfs_storage, "local-zfs")
+    size         = tonumber(regex("^(\\d+)", coalesce(var.rootfs_size, "8G"))[0])
+  }
+
+  # Network interfaces
+  dynamic "network_interface" {
     for_each = var.networks
     content {
-      name   = network.value.name
-      bridge = network.value.bridge
-      ip     = lookup(network.value, "ip", "dhcp")
-      gw     = lookup(network.value, "gw", null)
-      tag    = lookup(network.value, "tag", null)
+      name    = network_interface.value.name
+      bridge  = network_interface.value.bridge
+      vlan_id = lookup(network_interface.value, "tag", null)
     }
   }
 
   # Additional mount points
-  dynamic "mountpoint" {
+  dynamic "mount_point" {
     for_each = coalesce(var.mountpoints, {})
     content {
-      key     = mountpoint.key
-      slot    = mountpoint.key
-      storage = mountpoint.value.storage
-      size    = mountpoint.value.size
-      mp      = mountpoint.value.mp
+      volume = "${mount_point.value.storage}:${tonumber(regex("^(\\d+)", mount_point.value.size)[0])}"
+      path   = mount_point.value.mp
     }
   }
-
-  # SSH public key
-  ssh_public_keys = var.ssh_keys != "" ? var.ssh_keys : null
-
-  # Password
-  password = var.password
 
   # Features
   features {
@@ -62,10 +73,15 @@ resource "proxmox_lxc" "container" {
     fuse    = var.features_fuse
   }
 
+  # Startup
+  unprivileged  = var.unprivileged
+  start_on_boot = var.onboot
+  started       = var.start
+
   # Lifecycle
   lifecycle {
     ignore_changes = [
-      network,
+      network_interface,
     ]
   }
 }

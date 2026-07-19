@@ -1,19 +1,14 @@
 output "vm_id" {
   description = "The ID of the created VM"
-  value       = proxmox_vm_qemu.nixos_vm.id
+  value       = proxmox_virtual_environment_vm.nixos_vm.vm_id
 }
 
 output "vm_name" {
   description = "The name of the created VM"
-  value       = proxmox_vm_qemu.nixos_vm.name
-}
-
-output "vm_ip" {
-  description = "The IP address of the VM"
-  value       = proxmox_vm_qemu.nixos_vm.default_ipv4_address
+  value       = proxmox_virtual_environment_vm.nixos_vm.name
 }
 
 output "vm_node" {
   description = "The Proxmox node hosting the VM"
-  value       = proxmox_vm_qemu.nixos_vm.target_node
+  value       = proxmox_virtual_environment_vm.nixos_vm.node_name
 }

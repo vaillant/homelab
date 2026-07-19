@@ -1,16 +1,12 @@
-# NixOS builder environment configuration
-# Copy to terraform.tfvars and adjust for your setup
+# NixOS builder VM configuration
 
-target_node = "proxmox1"
-ostemplate  = "local:vztmpl/nixos-24.11-lxc.tar.xz"
+target_node  = "proxmox1"
+storage      = "local"
+disk_storage = "local-zfs"
 
-cores       = 4
-memory      = 8192
-swap        = 4096
-rootfs_size = "64G"
+cores   = 4
+memory  = 8192
+disk_size = 64
 
-networks = [{
-  name   = "eth0"
-  bridge = "vmbr0"
-  ip     = "dhcp"
-}]
+bridge     = "vmbr0"
+ip_address = "dhcp"

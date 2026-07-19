@@ -3,18 +3,21 @@ terraform {
 
   required_providers {
     proxmox = {
-      source  = "telmate/proxmox"
-      version = "3.0.2-rc08"
+      source  = "bpg/proxmox"
+      version = "~> 0.66"
     }
   }
 }
 
 provider "proxmox" {
   # Connection details via environment variables:
-  # PM_API_URL          - Proxmox API URL (e.g., "https://proxmox.example.com:8006/api2/json")
-  # PM_API_TOKEN_ID     - API token ID (e.g., "user@pam!tokenname")
-  # PM_API_TOKEN_SECRET - API token secret
-  # PM_TLS_INSECURE     - Set to "true" to skip TLS verification (optional)
+  # PROXMOX_VE_ENDPOINT  - Proxmox API URL (e.g., "https://proxmox.example.com:8006/")
+  # PROXMOX_VE_API_TOKEN - API token (e.g., "user@pam!tokenname=secret")
+  # PROXMOX_VE_INSECURE  - Set to "true" to skip TLS verification (optional)
+  #
+  # Or use username/password:
+  # PROXMOX_VE_USERNAME  - Username (e.g., "root@pam")
+  # PROXMOX_VE_PASSWORD  - Password
 
-  pm_tls_insecure = true  # Set to false if using valid SSL certificates
+  insecure = true  # Set to false if using valid SSL certificates
 }
