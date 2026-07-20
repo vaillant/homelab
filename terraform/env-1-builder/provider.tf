@@ -17,9 +17,10 @@ provider "proxmox" {
 
   insecure = true
 
-  # SSH connection for disk operations (uses ssh-agent)
+  # SSH connection for disk operations
+  # Private key is read from PROXMOX_VE_SSH_PRIVATE_KEY environment variable
   ssh {
-    agent    = true
+    agent    = false
     username = "root"
   }
 }

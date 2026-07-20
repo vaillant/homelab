@@ -44,8 +44,16 @@ Terraform/OpenTofu configuration for managing a Proxmox VE cluster with NixOS VM
 2. **Proxmox VE Cluster**
    - 3-node Proxmox cluster (or modify `proxmox_nodes` variable)
    - API token created for Terraform access
+   - SSH Access possible for Terraform access
 
 All other tools (OpenTofu, 1Password CLI, etc.) are provided by the Nix shell environment.
+
+## TODOs
+
+* Currently root SSH access assumed. Change to normal use access.
+* Update Token Rights (see Proxmox Roles)
+* Debian based Builder stopped twice after initial install, after restart it worked. 
+* Check: Why is the private SSH Key required?
 
 ## Quick Start
 
@@ -73,7 +81,8 @@ pveum user add terraform@pve
 pveum role add TerraformRole -privs "VM.Allocate VM.Clone VM.Config.CDROM VM.Config.CPU VM.Config.Cloudinit VM.Config.Disk VM.Config.HWType VM.Config.Memory VM.Config.Network VM.Config.Options VM.Audit VM.PowerMgmt Datastore.AllocateSpace Datastore.Audit Pool.Allocate Pool.Audit SDN.Use Sys.Audit Sys.Console Sys.Modify"
 
 # Assign role to user
-# TODO: This is wrong, the "/" should be assigned to the token.
+# TODO: CHeck: Is wrong, the "/" should be assigned to the token?
+$ Maybe not, as we do not have privelege seperation?
 pveum aclmod / -user terraform@pve -role TerraformRole
 
 # Create API token
@@ -106,6 +115,14 @@ export PM_API_TOKEN_SECRET="op://Private/Proxmox/token_secret"
 export PM_TLS_INSECURE="true"
 EOF
 ```
+
+### 4. Download NixOS LX container image and upload 
+
+```bash
+  make download-nixos-lxc
+  make upload-lxc NODE=<nodename>
+```
+
 
 ### 4. Create NixOS Template
 

@@ -1,6 +1,27 @@
 # NixOS builder environment
 # Manages the nix-builder VM for building NixOS images
 
+# Cloud-init user data to install QEMU guest agent
+resource "proxmox_virtual_environment_file" "cloud_init" {
+  content_type = "snippets"
+  datastore_id = var.storage
+  node_name    = var.target_node
+
+  source_raw {
+    data = <<-EOF
+      #cloud-config
+      package_update: true
+      packages:
+        - qemu-guest-agent
+      runcmd:
+        - systemctl enable qemu-guest-agent
+        - systemctl start qemu-guest-agent
+    EOF
+
+    file_name = "nix-builder-cloud-init.yaml"
+  }
+}
+
 # Download Debian cloud image
 resource "proxmox_download_file" "debian_image" {
   content_type = "iso"
@@ -67,7 +88,8 @@ resource "proxmox_virtual_environment_vm" "nix_builder" {
 
   # Cloud-init configuration
   initialization {
-    datastore_id = var.disk_storage
+    datastore_id      = var.disk_storage
+    user_data_file_id = proxmox_virtual_environment_file.cloud_init.id
 
     ip_config {
       ipv4 {

@@ -7,6 +7,9 @@ env:
   PROXMOX_VE_API_TOKEN:
     sh: echo "$(op read 'op://Homelab/Proxmox/token_id')=$(op read 'op://Homelab/Proxmox/token_secret')"
   PROXMOX_VE_INSECURE: "true"
+  # SSH private key for Proxmox disk operations
+  PROXMOX_VE_SSH_PRIVATE_KEY:
+    sh: op read "op://Homelab/Homelab SSH Key/private key"
 
 vars:
   NODE: '{{.NODE | default "proxmox1"}}'
