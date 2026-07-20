@@ -54,6 +54,7 @@ All other tools (OpenTofu, 1Password CLI, etc.) are provided by the Nix shell en
 * Update Token Rights (see Proxmox Roles)
 * Debian based Builder stopped twice after initial install, after restart it worked. 
 * Check: Why is the private SSH Key required?
+* Cleanup checks in Taskfile
 
 ## Quick Start
 

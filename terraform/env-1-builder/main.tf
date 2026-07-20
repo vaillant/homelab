@@ -1,7 +1,7 @@
 # NixOS builder environment
 # Manages the nix-builder VM for building NixOS images
 
-# Cloud-init user data to install QEMU guest agent
+# Cloud-init user data
 resource "proxmox_virtual_environment_file" "cloud_init" {
   content_type = "snippets"
   datastore_id = var.storage
@@ -10,6 +10,17 @@ resource "proxmox_virtual_environment_file" "cloud_init" {
   source_raw {
     data = <<-EOF
       #cloud-config
+      users:
+        - name: root
+          lock_passwd: false
+          ssh_authorized_keys:
+            - ${var.ssh_pubkey}
+        - name: ubuntu
+          sudo: ALL=(ALL) NOPASSWD:ALL
+          shell: /bin/bash
+          ssh_authorized_keys:
+            - ${var.ssh_pubkey}
+      ssh_pwauth: false
       package_update: true
       packages:
         - qemu-guest-agent
@@ -22,14 +33,15 @@ resource "proxmox_virtual_environment_file" "cloud_init" {
   }
 }
 
-# Download Debian cloud image
-resource "proxmox_download_file" "debian_image" {
-  content_type = "iso"
-  datastore_id = var.storage
-  node_name    = var.target_node
-  file_name    = "debian-12-generic-amd64.img"
+# Download Ubuntu cloud image
+resource "proxmox_download_file" "ubuntu_image" {
+  content_type        = "iso"
+  datastore_id        = var.storage
+  node_name           = var.target_node
+  file_name           = "ubuntu-24.04-server-cloudimg-amd64.img"
+  overwrite_unmanaged = true
 
-  url = "https://cloud.debian.org/images/cloud/bookworm/latest/debian-12-generic-amd64.qcow2"
+  url = "https://cloud-images.ubuntu.com/releases/24.04/release/ubuntu-24.04-server-cloudimg-amd64.img"
 }
 
 # Create the NixOS builder VM
@@ -37,6 +49,16 @@ resource "proxmox_virtual_environment_vm" "nix_builder" {
   name        = "nix-builder"
   node_name   = var.target_node
   description = "NixOS remote builder"
+
+  # Use UEFI boot
+  bios = "ovmf"
+  machine = "q35"
+
+  # EFI disk for UEFI boot
+  efi_disk {
+    datastore_id = var.disk_storage
+    type         = "4m"
+  }
 
   # VM settings
   on_boot = true
@@ -72,7 +94,7 @@ resource "proxmox_virtual_environment_vm" "nix_builder" {
     interface    = "scsi0"
     datastore_id = var.disk_storage
     size         = var.disk_size
-    file_id      = proxmox_download_file.debian_image.id
+    file_id      = proxmox_download_file.ubuntu_image.id
     discard      = "on"
     ssd          = true
   }
@@ -96,11 +118,6 @@ resource "proxmox_virtual_environment_vm" "nix_builder" {
         address = var.ip_address
         gateway = var.gateway
       }
-    }
-
-    user_account {
-      username = "root"
-      keys     = [var.ssh_pubkey]
     }
   }
 

@@ -101,9 +101,15 @@ tasks:
           -var="ssh_pubkey={{.SSH_PUBKEY}}"
 
   builder-output:
-    desc: Show builder outputs
+    desc: Show builder outputs (refreshes state first)
     dir: terraform/env-1-builder
     cmds:
+      - |
+        tofu refresh \
+          -var="target_node={{.NODE}}" \
+          -var="storage={{.STORAGE}}" \
+          -var="nixos_version={{.NIXOS_VERSION}}" \
+          -var="ssh_pubkey={{.SSH_PUBKEY}}"
       - tofu output
 
   #
