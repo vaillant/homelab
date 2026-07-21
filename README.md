@@ -42,9 +42,9 @@ Terraform/OpenTofu configuration for managing a Proxmox VE cluster with NixOS VM
    ```
 
 2. **Proxmox VE Cluster**
-   - 3-node Proxmox cluster (or modify `proxmox_nodes` variable)
+   - Proxmox cluster (or modify `proxmox_nodes` variable)
    - API token created for Terraform access
-   - SSH Access possible for Terraform access
+   - SSH access available for Terraform access
 
 All other tools (OpenTofu, 1Password CLI, etc.) are provided by the Nix shell environment.
 
@@ -52,9 +52,13 @@ All other tools (OpenTofu, 1Password CLI, etc.) are provided by the Nix shell en
 
 * Currently root SSH access assumed. Change to normal use access.
 * Update Token Rights (see Proxmox Roles)
-* Debian based Builder stopped twice after initial install, after restart it worked. 
 * Check: Why is the private SSH Key required?
 * Cleanup checks in Taskfile
+* Add tags to created VM.
+* Change to default nix, away from DeterminateSystems 
+
+Very Minor:
+* Ubiquiti Web UI does not show correct hostname, but "ubuntu" for nix-builder. IMHO a Ubiquiti bug.
 
 ## Quick Start
 
@@ -194,215 +198,11 @@ make setup
 make apply
 ```
 
-## Makefile Commands
-
-All commands should be run from within `nix-shell`:
-
-```bash
-make help              # Show available commands
-make check-env         # Verify environment setup
-make init              # Initialize Terraform
-make plan              # Show planned changes
-make apply             # Apply infrastructure changes
-make validate          # Validate Terraform configuration
-make fmt               # Format Terraform files
-make output            # Show Terraform outputs
-make setup             # Quick setup: init + plan
-make clean             # Clean Terraform cache
-
-# Template creation
-make template-create NODE=pve1 STORAGE=local-lvm TEMPLATE_ID=9000
-```
-
-## Usage Examples
-
-### Adding a New NixOS VM
-
-Edit `terraform/terraform.tfvars`:
-
-```hcl
-nixos_vms = {
-  "existing-vm" = { ... }
-
-  "new-database-server" = {
-    target_node = "pve2"
-    cores       = 4
-    memory      = 8192
-    disks = [{
-      type    = "scsi"
-      storage = "local-lvm"
-      size    = "100G"
-      discard = "on"
-    }]
-    ipconfig0 = "ip=10.0.0.101/24,gw=10.0.0.1"
-  }
-}
-```
-
-Then:
-
-```bash
-make plan   # Review changes
-make apply  # Create the VM
-```
-
-### Adding an LXC Container with Docker
-
-```hcl
-lxc_containers = {
-  "docker-host-02" = {
-    target_node = "pve3"
-    ostemplate  = "local:vztmpl/ubuntu-22.04-standard_22.04-1_amd64.tar.zst"
-    cores       = 4
-    memory      = 4096
-    rootfs_size = "32G"
-    features_nesting = true  # Required for Docker
-    features_fuse    = true
-    networks = [{
-      name   = "eth0"
-      bridge = "vmbr0"
-      ip     = "10.0.0.51/24"
-      gw     = "10.0.0.1"
-    }]
-  }
-}
-```
-
-### Multiple Network Interfaces
-
-```hcl
-networks = [
-  {
-    model  = "virtio"
-    bridge = "vmbr0"
-  },
-  {
-    model  = "virtio"
-    bridge = "vmbr1"
-    tag    = 100  # VLAN tag
-  }
-]
-```
-
-### Multiple Disks
-
-```hcl
-disks = [
-  {
-    type    = "scsi"
-    storage = "local-lvm"
-    size    = "32G"
-    discard = "on"
-  },
-  {
-    type    = "scsi"
-    storage = "nfs-storage"
-    size    = "500G"
-  }
-]
-```
-
-## Module Documentation
-
-### NixOS VM Module
-
-Located in `terraform/modules/nixos-vm/`
-
-**Key Variables:**
-- `vm_name` - VM name
-- `target_node` - Proxmox node
-- `cores`, `memory` - Resources
-- `disks` - Disk configurations
-- `networks` - Network configurations
-- `ipconfig0` - IP setup (DHCP or static)
-- `ssh_keys` - SSH public keys
-
-**Outputs:**
-- `vm_id` - Proxmox VM ID
-- `vm_name` - VM name
-- `vm_ip` - IP address
-- `vm_node` - Host node
-
-### LXC Container Module
-
-Located in `terraform/modules/lxc-container/`
-
-**Key Variables:**
-- `hostname` - Container hostname
-- `target_node` - Proxmox node
-- `ostemplate` - OS template path
-- `cores`, `memory` - Resources
-- `networks` - Network configurations
-- `features_nesting` - Enable for Docker
-- `features_fuse` - Enable FUSE
-
-**Outputs:**
-- `container_id` - Proxmox container ID
-- `container_hostname` - Hostname
-- `container_node` - Host node
-
-## Customizing the NixOS Template
-
-Edit the configuration in `scripts/create-nixos-template.sh`:
-
-```nix
-environment.systemPackages = with pkgs; [
-  vim
-  git
-  htop
-  docker        # Add packages
-  kubernetes
-];
-
-# Add services
-services.docker.enable = true;
-```
-
-Then recreate the template:
-
-```bash
-make template-create NODE=pve1 STORAGE=local-lvm TEMPLATE_ID=9000
-```
 
 ## Troubleshooting
 
-### Environment Check
+tail -f /var/log/cloud-init-output.log 
 
-```bash
-# Verify all requirements
-make check-env
-```
-
-### Terraform State
-
-```bash
-# List managed resources
-make state-list
-
-# Show outputs
-make output
-
-# Refresh state
-make refresh
-```
-
-### Connection Issues
-
-```bash
-# Test Proxmox API
-curl -k "$PM_API_URL" \
-  -H "Authorization: PVEAPIToken=$PM_API_TOKEN_ID=$PM_API_TOKEN_SECRET"
-```
-
-### Template Issues
-
-Verify the template exists:
-
-```bash
-# On Proxmox node
-qm list | grep 9000
-qm config 9000
-```
 
 ### Nix Shell Issues
 

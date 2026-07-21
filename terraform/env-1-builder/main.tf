@@ -10,6 +10,9 @@ resource "proxmox_virtual_environment_file" "cloud_init" {
   source_raw {
     data = <<-EOF
       #cloud-config
+      hostname: nix-builder
+      fqdn: nix-builder
+      manage_etc_hosts: true
       users:
         - name: root
           lock_passwd: false
@@ -27,6 +30,11 @@ resource "proxmox_virtual_environment_file" "cloud_init" {
       runcmd:
         - systemctl enable qemu-guest-agent
         - systemctl start qemu-guest-agent
+        # Force DHCP to re-register with correct hostname after cloud-init sets it
+        - netplan apply
+        - sleep 10
+        # Install Nix using Determinate Systems installer
+        - 'curl --proto ''=https'' --tlsv1.2 -sSf -L https://install.determinate.systems/nix | sh -s -- install linux --no-confirm --extra-conf "trusted-users = root nix-builder"'
     EOF
 
     file_name = "nix-builder-cloud-init.yaml"
