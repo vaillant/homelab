@@ -13,9 +13,9 @@ env:
 
 vars:
   NODE: '{{.NODE | default "proxmox1"}}'
-  STORAGE: '{{.STORAGE | default "local"}}'
-  LXC_IMAGE: '{{.LXC_IMAGE | default "proxmox-lxc-base"}}'
-  BUILDER: '{{.BUILDER | default "ssh://root@nix-builder"}}'
+  DISK_STORAGE: '{{.DISK_STORAGE | default "local-zfs"}}'
+  IMAGE_STORAGE: '{{.IMAGE_STORAGE | default "local"}}'
+  BUILDER_HOST: '{{.BUILDER_HOST | default "nix-builder.svaillant.com"}}'
   NIXOS_VERSION: '{{.NIXOS_VERSION | default "24.11"}}'
   # SSH public key from 1Password for cloud-init
   SSH_PUBKEY:
@@ -84,7 +84,8 @@ tasks:
       - |
         tofu plan \
           -var="target_node={{.NODE}}" \
-          -var="storage={{.STORAGE}}" \
+          -var="storage={{.IMAGE_STORAGE}}" \
+          -var="disk_storage={{.DISK_STORAGE}}" \
           -var="nixos_version={{.NIXOS_VERSION}}" \
           -var="ssh_pubkey={{.SSH_PUBKEY}}"
 
@@ -96,7 +97,8 @@ tasks:
       - |
         tofu apply -auto-approve \
           -var="target_node={{.NODE}}" \
-          -var="storage={{.STORAGE}}" \
+          -var="storage={{.IMAGE_STORAGE}}" \
+          -var="disk_storage={{.DISK_STORAGE}}" \
           -var="nixos_version={{.NIXOS_VERSION}}" \
           -var="ssh_pubkey={{.SSH_PUBKEY}}"
 
@@ -107,55 +109,46 @@ tasks:
       - |
         tofu refresh \
           -var="target_node={{.NODE}}" \
-          -var="storage={{.STORAGE}}" \
+          -var="storage={{.IMAGE_STORAGE}}" \
+          -var="disk_storage={{.DISK_STORAGE}}" \
           -var="nixos_version={{.NIXOS_VERSION}}" \
           -var="ssh_pubkey={{.SSH_PUBKEY}}"
       - tofu output
 
   #
-  # Phase 2: Build NixOS image
+  # Phase 2: Build and upload NixOS LXC image
   #
 
-  build-lxc:
-    desc: Build custom NixOS LXC image
+  lxc-build:
+    desc: Build NixOS LXC image on nix-builder and upload to Proxmox
+    deps: [check, secrets-init]
     cmds:
-      - echo "Building NixOS LXC image on {{.BUILDER}}..."
+      - echo "Building NixOS LXC image on {{.BUILDER_HOST}}..."
+      # Copy nix/ directory to builder (excluding result symlinks)
+      - rsync -avz --delete --exclude='result' --exclude='result-*' nix/ root@{{.BUILDER_HOST}}:/tmp/homelab-nix/
+      # Build on remote builder
+      - ssh root@{{.BUILDER_HOST}} "cd /tmp/homelab-nix && nix build .#proxmox-lxc-base --out-link result"
+      # Upload directly from builder to Proxmox
+      - echo "Uploading to Proxmox {{.NODE}}..."
       - |
-        nix build ./nix#{{.LXC_IMAGE}} --out-link nix/result \
-          {{if .BUILDER}}--builders '{{.BUILDER}} x86_64-linux - 4 1 big-parallel'{{end}}
-      - echo ""
-      - ls nix/result/tarball/
-      - 'echo "Upload with: task upload-lxc"'
-
-  upload-lxc:
-    desc: Upload LXC image to Proxmox
-    deps: [check]
-    cmds:
-      - |
-        TARBALL_COUNT=$(ls -1 nix/result/tarball/*.tar.xz 2>/dev/null | wc -l | tr -d ' ')
-        if [ "$TARBALL_COUNT" -eq 0 ]; then
-          echo "ERROR: No .tar.xz files found. Run 'task build-lxc' first."
-          exit 1
-        elif [ "$TARBALL_COUNT" -gt 1 ]; then
-          echo "ERROR: Multiple tarballs found in nix/result/tarball/:"
-          ls -1 nix/result/tarball/*.tar.xz
-          echo "Please remove old builds and run 'task build-lxc' again."
-          exit 1
-        fi
-      - echo "Uploading NixOS LXC image to {{.NODE}}..."
-      - |
-        TARBALL=$(ls nix/result/tarball/*.tar.xz)
-        FILENAME=$(basename $TARBALL)
-        curl -s -k -f \
-          -H "Authorization: PVEAPIToken=$PROXMOX_VE_API_TOKEN" \
-          -H "Content-Type: multipart/form-data" \
-          -F "content=vztmpl" \
-          -F "filename=@$TARBALL" \
-          "${PROXMOX_VE_ENDPOINT}api2/json/nodes/{{.NODE}}/storage/{{.STORAGE}}/upload" \
-          | jq -r '"✓ Uploaded: \(.data)"' \
-          || (echo "✗ Failed to upload template" && exit 1)
-        echo ""
-        echo "Template available at: {{.STORAGE}}:vztmpl/$FILENAME"
+        ssh root@{{.BUILDER_HOST}} "
+          TARBALL=\$(ls /tmp/homelab-nix/result/tarball/*.tar.xz)
+          FILENAME=\$(basename \$TARBALL)
+          echo \"Uploading \$FILENAME...\"
+          curl -s -k -f \
+            -H \"Authorization: PVEAPIToken=$PROXMOX_VE_API_TOKEN\" \
+            -H 'Content-Type: multipart/form-data' \
+            -F 'content=vztmpl' \
+            -F \"filename=@\$TARBALL\" \
+            \"${PROXMOX_VE_ENDPOINT}/api2/json/nodes/{{.NODE}}/storage/{{.IMAGE_STORAGE}}/upload\" \
+            | jq -r '\"✓ Uploaded: \(.data)\"' \
+            || (echo '✗ Failed to upload template' && exit 1)
+          echo ''
+          echo \"Template available at: {{.IMAGE_STORAGE}}:vztmpl/\$FILENAME\"
+        "
+      # Cleanup
+      - ssh root@{{.BUILDER_HOST}} "rm -rf /tmp/homelab-nix"
+      - echo "✓ Build and upload complete"
 
   #
   # Phase 3: Deploy production
@@ -172,17 +165,64 @@ tasks:
     deps: [check]
     dir: terraform/env-2-production
     cmds:
-      - tofu plan -var="default_storage={{.STORAGE}}"
+      - tofu plan -var="default_storage={{.DISK_STORAGE}}"
 
   production-apply:
     desc: Apply production changes
     deps: [check]
     dir: terraform/env-2-production
     cmds:
-      - tofu apply -var="default_storage={{.STORAGE}}"
+      - tofu apply -var="default_storage={{.DISK_STORAGE}}"
 
   production-output:
     desc: Show production outputs
     dir: terraform/env-2-production
     cmds:
       - tofu output
+
+  #
+  # Secrets management
+  #
+
+  secrets-init:
+    desc: Populate secrets from 1Password
+    cmds:
+      - mkdir -p nix/secrets
+      # Required: SSH public key for base image
+      - op read "op://Homelab/Homelab SSH Key/public key" > nix/secrets/ssh-pubkey
+      - echo "✓ ssh-pubkey"
+      # Optional: Cloudflared tunnel token (skip if not configured yet)
+      - op read "op://Homelab/Cloudflared/tunnel-token" > nix/secrets/cloudflared-token 2>/dev/null || echo "⚠ Cloudflared token not found (skipped)"
+      # Optional: Pulse Proxmox credentials
+      - op read "op://Homelab/Proxmox/token_id" > nix/secrets/pulse-proxmox-token-id 2>/dev/null || echo "⚠ Proxmox token_id not found (skipped)"
+      - op read "op://Homelab/Proxmox/token_secret" > nix/secrets/pulse-proxmox-token-secret 2>/dev/null || echo "⚠ Proxmox token_secret not found (skipped)"
+      - echo "✓ Secrets populated in nix/secrets/"
+
+  #
+  # Phase 4: Deploy NixOS configurations
+  #
+
+  deploy-cloudflared:
+    desc: Deploy cloudflared configuration
+    cmds:
+      - echo "Deploying cloudflared to cloudflared.svaillant.com..."
+      - nixos-rebuild switch --target-host root@cloudflared.svaillant.com --flake ./nix#cloudflared --use-remote-sudo
+
+  deploy-pulse:
+    desc: Deploy pulse configuration
+    cmds:
+      - echo "Deploying pulse to pulse.svaillant.com..."
+      - nixos-rebuild switch --target-host root@pulse.svaillant.com --flake ./nix#pulse --use-remote-sudo
+
+  deploy-bose-soundtouch:
+    desc: Deploy bose-soundtouch configuration
+    cmds:
+      - echo "Deploying bose-soundtouch to bose-soundtouch.svaillant.com..."
+      - nixos-rebuild switch --target-host root@bose-soundtouch.svaillant.com --flake ./nix#bose-soundtouch --use-remote-sudo
+
+  deploy-all:
+    desc: Deploy all container configurations
+    cmds:
+      - task: deploy-cloudflared
+      - task: deploy-pulse
+      - task: deploy-bose-soundtouch

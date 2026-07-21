@@ -19,6 +19,7 @@ terraform/**/*_override.tf.json
 *.password
 *.credentials
 .envrc
+nix/secrets/
 
 # OS files
 .DS_Store

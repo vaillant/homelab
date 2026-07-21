@@ -4,35 +4,14 @@ Terraform/OpenTofu configuration for managing a Proxmox VE cluster with NixOS VM
 
 ## Features
 
-- Modular design for easy scaling
-- Support for multiple NixOS VMs
-- Support for LXC containers
-- Cloud-init integration for automated provisioning
-- Automated NixOS template creation
-- Environment variable-based authentication
+- Declarative DataCenter 1/3: Terraform automated Proxomox Ubuntu installation, complete with cloud-init, DHCP, DNS, Nix installed.  
+- Declarative DataCenter 2/3: Create NixOS LXC Container(s) with remote Nix Builder.
 - Nix-based development environment (no global tool installation needed)
-- Makefile for simplified workflow
+- Taskfile for simplified workflow
 
 ## Directory Structure
 
-```
-.
-├── terraform/
-│   ├── modules/
-│   │   ├── nixos-vm/          # Reusable NixOS VM module
-│   │   └── lxc-container/     # Reusable LXC container module
-│   ├── main.tf                # Main configuration (VM and container definitions)
-│   ├── provider.tf            # Proxmox provider configuration
-│   ├── variables.tf           # Variable definitions
-│   ├── versions.tf            # Type definitions for VMs and containers
-│   ├── outputs.tf             # Output definitions
-│   └── terraform.tfvars.example  # Example configuration
-├── scripts/
-│   └── create-nixos-template.sh  # Script to create NixOS cloud template
-├── shell.nix                  # Nix development environment
-├── Makefile                   # Task automation
-└── README.md
-```
+TODO
 
 ## Prerequisites
 
@@ -82,7 +61,7 @@ On your Proxmox server:
 # Create a user for Terraform
 pveum user add terraform@pve
 
-# Create a role with necessary permissions
+# Create a role with necessary permissions: TODO
 pveum role add TerraformRole -privs "VM.Allocate VM.Clone VM.Config.CDROM VM.Config.CPU VM.Config.Cloudinit VM.Config.Disk VM.Config.HWType VM.Config.Memory VM.Config.Network VM.Config.Options VM.Audit VM.PowerMgmt Datastore.AllocateSpace Datastore.Audit Pool.Allocate Pool.Audit SDN.Use Sys.Audit Sys.Console Sys.Modify"
 
 # Assign role to user
@@ -96,108 +75,78 @@ pveum user token add terraform@pve terraform-token --privsep 0
 
 Save the token ID and secret - you'll need them for the next step.
 
-### 3. Configure Environment Variables
+### 3. Configure 1Password Vault
 
-Create a `~/.envrc` file (this file is git-ignored):
+Environment variables are managed automatically via Taskfile using 1Password CLI. Create the following items in your 1Password vault:
+
+**1Password Item: `Homelab/Proxmox`**
+| Field | Description | Example |
+|-------|-------------|---------|
+| `url` | Proxmox API URL | `https://proxmox.example.com:8006/api2/json` |
+| `token_id` | API token ID | `terraform@pve!terraform-token` |
+| `token_secret` | API token secret | `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx` |
+
+**1Password Item: `Homelab/Homelab SSH Key`**
+| Field | Description |
+|-------|-------------|
+| `public key` | SSH public key for VM access |
+| `private key` | SSH private key (used by Terraform for disk operations) |
+
+The Taskfile automatically reads these secrets:
+```yaml
+env:
+  PROXMOX_VE_ENDPOINT:
+    sh: op read "op://Homelab/Proxmox/url" | sed 's|/api2/json||'
+  PROXMOX_VE_API_TOKEN:
+    sh: echo "$(op read 'op://Homelab/Proxmox/token_id')=$(op read 'op://Homelab/Proxmox/token_secret')"
+  PROXMOX_VE_INSECURE: "true"
+  PROXMOX_VE_SSH_PRIVATE_KEY:
+    sh: op read "op://Homelab/Homelab SSH Key/private key"
+```
+
+Verify your setup:
+```bash
+nix-shell
+task check
+```
+
+### 4. Deploy the Nix Builder VM
+
+The nix-builder is an Ubuntu VM with Nix installed, used as a remote builder for creating NixOS images. This is necessary when your local machine has a different architecture (e.g., ARM Mac) than Proxmox (x86_64).
 
 ```bash
-cat > ~/.envrc << 'EOF'
-export PM_API_URL="https://your-proxmox-host.example.com:8006/api2/json"
-export PM_API_TOKEN_ID="terraform@pve!terraform-token"
-export PM_API_TOKEN_SECRET="your-secret-here"
-export PM_TLS_INSECURE="true"  # Set to false if using valid SSL certificates
-EOF
+# Enter nix-shell if not already
+nix-shell
+
+# Initialize Terraform (first time only)
+task builder-init
+
+# Preview changes
+task builder-plan
+
+# Deploy the builder VM
+task builder-apply
 ```
 
-**Alternative: Using 1Password CLI**
+The builder VM will be created with:
+- Ubuntu 24.04 cloud image
+- Nix package manager (Determinate Systems installer)
+- QEMU guest agent
+- SSH access configured via your 1Password SSH key
 
+Wait 2-3 minutes for cloud-init to complete, then verify:
 ```bash
-cat > ~/.envrc << 'EOF'
-# Reference secrets from 1Password
-export PM_API_URL="op://Private/Proxmox/url"
-export PM_API_TOKEN_ID="op://Private/Proxmox/token_id"
-export PM_API_TOKEN_SECRET="op://Private/Proxmox/token_secret"
-export PM_TLS_INSECURE="true"
-EOF
+# Get the builder IP
+task builder-output
+
+# Test SSH and Nix installation
+ssh root@<builder-ip> nix --version
 ```
 
-### 4. Download NixOS LX container image and upload 
-
+Once the builder is ready, you can use it for Phase 2 (building NixOS images):
 ```bash
-  make download-nixos-lxc
-  make upload-lxc NODE=<nodename>
+task build-lxc
 ```
-
-
-### 4. Create NixOS Template
-
-```bash
-# Create the template on node pve1
-make template-create NODE=pve1 STORAGE=local-lvm TEMPLATE_ID=9000
-
-# Or run the script directly
-./scripts/create-nixos-template.sh pve1 local-lvm 9000
-```
-
-This will:
-1. Build a NixOS cloud image using nixos-generators
-2. Import it into Proxmox
-3. Configure cloud-init support
-4. Convert to a template
-
-### 5. Configure Your Infrastructure
-
-```bash
-# Copy example configuration
-cd terraform
-cp terraform.tfvars.example terraform.tfvars
-
-# Edit with your configuration
-vim terraform.tfvars
-```
-
-Example `terraform.tfvars`:
-
-```hcl
-proxmox_nodes = ["pve1", "pve2", "pve3"]
-
-ssh_public_keys = <<-EOT
-ssh-ed25519 AAAAC3Nza... user@host
-EOT
-
-nixos_vms = {
-  "nixos-web-01" = {
-    target_node = "pve1"
-    cores       = 2
-    memory      = 4096
-    ipconfig0   = "ip=10.0.0.100/24,gw=10.0.0.1"
-  }
-}
-
-lxc_containers = {
-  "docker-host" = {
-    target_node = "pve1"
-    ostemplate  = "local:vztmpl/ubuntu-22.04-standard_22.04-1_amd64.tar.zst"
-    cores       = 2
-    memory      = 2048
-    features_nesting = true
-  }
-}
-```
-
-### 6. Deploy Infrastructure
-
-```bash
-# Return to repo root
-cd ..
-
-# Quick setup: initialize and plan
-make setup
-
-# Apply the configuration
-make apply
-```
-
 
 ## Troubleshooting
 
@@ -246,7 +195,7 @@ nix-shell
 
 ## Sources
 
-- [Terraform Proxmox Provider (telmate)](https://registry.terraform.io/providers/Telmate/proxmox/latest/docs)
+- [Terraform Proxmox Provider (bpg)](https://registry.terraform.io/providers/bpg/proxmox/latest/docs)
 - [Proxmox VE Documentation](https://pve.proxmox.com/pve-docs/)
 - [NixOS Manual](https://nixos.org/manual/nixos/stable/)
 - [nixos-generators](https://github.com/nix-community/nixos-generators)

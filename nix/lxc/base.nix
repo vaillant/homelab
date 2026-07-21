@@ -49,5 +49,10 @@
     settings.PermitRootLogin = "prohibit-password";
   };
 
+  # SSH public key for root access (read from secrets at build time)
+  users.users.root.openssh.authorizedKeys.keys = [
+    (lib.strings.trim (builtins.readFile ../secrets/ssh-pubkey))
+  ];
+
   system.stateVersion = "24.11";
 }
