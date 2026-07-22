@@ -10,7 +10,7 @@ in
   ];
 
   # Container hostname
-  networking.hostName = "cloudflared";
+  networking.hostName = "svc-cloudflared";
 
   # Cloudflare Tunnel service
   services.cloudflared = {

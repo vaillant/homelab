@@ -11,7 +11,7 @@ in
   ];
 
   # Container hostname
-  networking.hostName = "pulse";
+  networking.hostName = "svc-pulse";
 
   # Enable Docker for running Pulse container
   virtualisation.docker = {

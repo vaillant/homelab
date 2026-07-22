@@ -5,5 +5,5 @@ output "nixos_vm_hostnames" {
 
 output "lxc_container_hostnames" {
   description = "Hostnames of LXC containers"
-  value       = { for k, v in module.lxc_containers : k => v.hostname }
+  value       = { for k, v in module.lxc_containers : k => v.container_hostname }
 }

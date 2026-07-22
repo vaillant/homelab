@@ -26,7 +26,7 @@ in
   ];
 
   # Container hostname
-  networking.hostName = "bose-soundtouch";
+  networking.hostName = "svc-bose-soundtouch";
 
   # AfterTouch systemd service
   systemd.services.aftertouch = {
