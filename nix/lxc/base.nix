@@ -49,6 +49,9 @@
     settings.PermitRootLogin = "prohibit-password";
   };
 
+  # Allow ping (ICMP)
+  networking.firewall.allowPing = true;
+
   # SSH public key for root access (read from secrets at build time)
   users.users.root.openssh.authorizedKeys.keys = [
     (lib.strings.trim (builtins.readFile ../secrets/ssh-pubkey))

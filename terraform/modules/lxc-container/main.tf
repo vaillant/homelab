@@ -67,10 +67,9 @@ resource "proxmox_virtual_environment_container" "container" {
     }
   }
 
-  # Features
+  # Features (only nesting can be changed by non-root API tokens)
   features {
     nesting = var.features_nesting
-    fuse    = var.features_fuse
   }
 
   # Startup

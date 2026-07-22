@@ -12,3 +12,8 @@ output "container_node" {
   description = "The Proxmox node hosting the container"
   value       = proxmox_virtual_environment_container.container.node_name
 }
+
+output "container_ipv4" {
+  description = "The IPv4 address of the container (first interface)"
+  value       = try(proxmox_virtual_environment_container.container.ipv4["eth0"], null)
+}

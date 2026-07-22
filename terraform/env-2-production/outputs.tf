@@ -7,3 +7,8 @@ output "lxc_container_hostnames" {
   description = "Hostnames of LXC containers"
   value       = { for k, v in module.lxc_containers : k => v.container_hostname }
 }
+
+output "lxc_container_ips" {
+  description = "IPv4 addresses of LXC containers"
+  value       = { for k, v in module.lxc_containers : k => v.container_ipv4 }
+}
