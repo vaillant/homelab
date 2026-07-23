@@ -10,6 +10,12 @@ variable "default_bridge" {
   default     = "vmbr0"
 }
 
+variable "default_lxc_template" {
+  description = "Default LXC template path (set by lxc-build task)"
+  type        = string
+  default     = "local:vztmpl/nixos-system-x86_64-linux.tar.xz"
+}
+
 variable "ssh_public_keys" {
   description = "SSH public keys (newline separated)"
   type        = string
@@ -56,7 +62,7 @@ variable "lxc_containers" {
   description = "Map of LXC containers to create"
   type = map(object({
     target_node    = string
-    ostemplate     = string
+    ostemplate     = optional(string)
     description    = optional(string)
     cores          = optional(number)
     memory         = optional(number)

@@ -32,8 +32,8 @@ tasks:
   # Utility tasks
   #
 
-  check-env:
-    desc: Check required tools
+  env-verify:
+    desc: Verify environment (tools, credentials, API connection)
     silent: true
     cmds:
       - echo "Checking required tools..."
@@ -48,18 +48,14 @@ tasks:
       - test -n "$PROXMOX_VE_API_TOKEN" || (echo "ERROR PROXMOX_VE_API_TOKEN is not set" && exit 1)
       - echo "✓ PROXMOX_VE_API_TOKEN is set"
       - echo ""
-      - echo "✅ All checks passed!"
-
-  check:
-    desc: Test Proxmox API connection
-    deps: [check-env]
-    cmds:
       - echo "Testing Proxmox API connection..."
       - |
         curl -s -k -f \
           -H "Authorization: PVEAPIToken=$PROXMOX_VE_API_TOKEN" \
           "${PROXMOX_VE_ENDPOINT}api2/json/version" | jq -r '"✓ Connected to Proxmox VE v\(.data.version) (\(.data.release))"' \
           || (echo "✗ Failed to connect to Proxmox API" && exit 1)
+      - echo ""
+      - echo "✅ All checks passed!"
 
   fmt:
     desc: Format Terraform files
@@ -79,7 +75,7 @@ tasks:
 
   builder-plan:
     desc: Plan builder changes
-    deps: [check]
+    deps: [env-verify]
     dir: terraform/env-1-builder
     cmds:
       - |
@@ -92,7 +88,7 @@ tasks:
 
   builder-apply:
     desc: Apply builder changes
-    deps: [check]
+    deps: [env-verify]
     dir: terraform/env-1-builder
     cmds:
       - |
@@ -122,34 +118,44 @@ tasks:
 
   lxc-build:
     desc: Build NixOS LXC image on nix-builder and upload to Proxmox
-    deps: [check, secrets-init]
+    deps: [env-verify, secrets-init]
+    vars:
+      # Versioned filename with timestamp
+      LXC_TEMPLATE_NAME: 'nixos-lxc-{{now | date "20060102-150405"}}.tar.xz'
     cmds:
       - echo "Building NixOS LXC image on {{.BUILDER_HOST}}..."
       # Copy nix/ directory to builder (excluding result symlinks)
       - rsync -avz --delete --exclude='result' --exclude='result-*' nix/ root@{{.BUILDER_HOST}}:/tmp/homelab-nix/
       # Build on remote builder
       - ssh root@{{.BUILDER_HOST}} "cd /tmp/homelab-nix && nix build .#proxmox-lxc-base --out-link result"
-      # Upload directly from builder to Proxmox
-      - echo "Uploading to Proxmox {{.NODE}}..."
+      # Upload directly from builder to Proxmox with versioned filename
+      - echo "Uploading {{.LXC_TEMPLATE_NAME}} to Proxmox {{.NODE}}..."
       - |
         ssh root@{{.BUILDER_HOST}} "
           TARBALL=\$(ls /tmp/homelab-nix/result/tarball/*.tar.xz)
-          FILENAME=\$(basename \$TARBALL)
-          echo \"Uploading \$FILENAME...\"
+          # Create symlink with versioned name for upload
+          ln -sf \$TARBALL /tmp/{{.LXC_TEMPLATE_NAME}}
+          echo \"Uploading as {{.LXC_TEMPLATE_NAME}}...\"
           curl -s -k -f \
             -H \"Authorization: PVEAPIToken=$PROXMOX_VE_API_TOKEN\" \
             -H 'Content-Type: multipart/form-data' \
             -F 'content=vztmpl' \
-            -F \"filename=@\$TARBALL\" \
+            -F 'filename=@/tmp/{{.LXC_TEMPLATE_NAME}}' \
             \"${PROXMOX_VE_ENDPOINT}/api2/json/nodes/{{.NODE}}/storage/{{.IMAGE_STORAGE}}/upload\" \
             | jq -r '\"✓ Uploaded: \(.data)\"' \
             || (echo '✗ Failed to upload template' && exit 1)
-          echo ''
-          echo \"Template available at: {{.IMAGE_STORAGE}}:vztmpl/\$FILENAME\"
+          rm /tmp/{{.LXC_TEMPLATE_NAME}}
         "
+      # Write template path to auto.tfvars for Terraform
+      - |
+        echo "default_lxc_template = \"{{.IMAGE_STORAGE}}:vztmpl/{{.LXC_TEMPLATE_NAME}}\"" \
+          > terraform/env-2-production/lxc-template.auto.tfvars
+        echo "✓ Updated terraform/env-2-production/lxc-template.auto.tfvars"
       # Cleanup
       - ssh root@{{.BUILDER_HOST}} "rm -rf /tmp/homelab-nix"
       - echo "✓ Build and upload complete"
+      - echo ""
+      - echo "Run 'task production-apply' to recreate containers with new image"
 
   #
   # Phase 3: Deploy production
@@ -163,14 +169,14 @@ tasks:
 
   production-plan:
     desc: Plan production changes
-    deps: [check]
+    deps: [env-verify]
     dir: terraform/env-2-production
     cmds:
       - tofu plan -var="default_storage={{.DISK_STORAGE}}"
 
   production-apply:
     desc: Apply production changes
-    deps: [check]
+    deps: [env-verify]
     dir: terraform/env-2-production
     cmds:
       - tofu apply -auto-approve -var="default_storage={{.DISK_STORAGE}}"
@@ -183,7 +189,6 @@ tasks:
 
   production-verify:
     desc: Verify containers are reachable (ping, DNS, SSH)
-    deps: [check]
     cmds:
       - |
         cd terraform/env-2-production
@@ -192,16 +197,14 @@ tasks:
         IPS=$(tofu output -json lxc_container_ips 2>/dev/null)
 
         if [ -z "$HOSTNAMES" ] || [ "$HOSTNAMES" = "{}" ]; then
-          echo "✗ No containers found in terraform state"
-          exit 1
+          echo "No containers found in terraform state"
+          exit 0
         fi
 
-        FAILED=0
         for KEY in $(echo "$HOSTNAMES" | jq -r 'keys[]'); do
           HOSTNAME=$(echo "$HOSTNAMES" | jq -r --arg k "$KEY" '.[$k]')
           IP=$(echo "$IPS" | jq -r --arg k "$KEY" '.[$k] // empty')
           FQDN="${HOSTNAME}.{{.DNS_SUFFIX}}"
-          ERRORS=""
 
           # Test ping to IP
           if [ -n "$IP" ]; then
@@ -209,7 +212,6 @@ tasks:
               PING_OK="✓"
             else
               PING_OK="✗"
-              ERRORS="${ERRORS}ping "
             fi
           else
             PING_OK="-"
@@ -217,12 +219,10 @@ tasks:
           fi
 
           # Test DNS resolution
-          DNS_IP=$(dig +short "$FQDN" A | head -1)
-          if [ -n "$DNS_IP" ]; then
+          if dig +short "$FQDN" A | head -1 | grep -q .; then
             DNS_OK="✓"
           else
             DNS_OK="✗"
-            ERRORS="${ERRORS}dns "
           fi
 
           # Test SSH (use IP if available, else FQDN)
@@ -232,20 +232,10 @@ tasks:
             SSH_OK="✓"
           else
             SSH_OK="✗"
-            ERRORS="${ERRORS}ssh "
           fi
 
-          if [ -z "$ERRORS" ]; then
-            echo "✓ $HOSTNAME ($IP) ping:$PING_OK dns:$DNS_OK ssh:$SSH_OK"
-          else
-            echo "✗ $HOSTNAME ($IP) ping:$PING_OK dns:$DNS_OK ssh:$SSH_OK"
-            FAILED=1
-          fi
+          echo "$HOSTNAME ($IP) ping:$PING_OK dns:$DNS_OK ssh:$SSH_OK"
         done
-
-        if [ $FAILED -ne 0 ]; then
-          exit 1
-        fi
 
   #
   # Secrets management

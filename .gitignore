@@ -5,6 +5,7 @@ terraform/**/*.tfstate
 terraform/**/*.tfstate.backup
 terraform/**/*.tfstate.*.backup
 terraform/**/terraform.tfvars
+terraform/**/*.auto.tfvars
 terraform/**/.terraform.tfstate.lock.info
 terraform/**/crash.log
 terraform/**/override.tf

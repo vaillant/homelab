@@ -49,7 +49,7 @@ module "lxc_containers" {
 
   hostname    = each.key
   target_node = each.value.target_node
-  ostemplate  = each.value.ostemplate
+  ostemplate  = coalesce(each.value.ostemplate, var.default_lxc_template)
   description = lookup(each.value, "description", "LXC container managed by Terraform")
 
   # Resources
