@@ -1,0 +1,9 @@
+# Talos Kubernetes Cluster Configuration
+# Most values are passed from Taskfile - this file is for optional overrides
+
+# Optional overrides (uncomment if needed)
+# cluster_name = "my-cluster"
+# node_count   = 5
+# node_cores   = 8
+# node_memory  = 16384
+# node_disk    = 100

@@ -9,6 +9,10 @@ pkgs.mkShell {
     go-task
     _1password-cli    # 1Password CLI (unfree), comment out if you do not use 1Password
 
+    # Kubernetes tools
+    kubectl         # Kubernetes CLI
+    talosctl        # Talos Linux CLI
+
     # Optional but useful tools
     curl            # HTTP client
     jq              # JSON processing
@@ -33,6 +37,11 @@ pkgs.mkShell {
         echo "Signing in to 1Password..."
         eval $(op signin)
       fi
+    fi
+
+    # Set kubeconfig if homelab config exists
+    if [ -f "$HOME/.kube/config-homelab" ]; then
+      export KUBECONFIG="$HOME/.kube/config-homelab"
     fi
 
     echo ""
