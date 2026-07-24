@@ -31,11 +31,6 @@ vars:
   TALOS_NODE_CORES: '{{.TALOS_NODE_CORES | default "4"}}'
   TALOS_NODE_MEMORY: '{{.TALOS_NODE_MEMORY | default "8192"}}'
   TALOS_NODE_DISK: '{{.TALOS_NODE_DISK | default "50"}}'
-  # Dynamic: Query Proxmox for available nodes
-  PVE_NODES:
-    sh: |
-      curl -s -k -H "Authorization: PVEAPIToken=$PROXMOX_VE_API_TOKEN" \
-        "${PROXMOX_VE_ENDPOINT}api2/json/nodes" 2>/dev/null | jq -r '[.data[].node] | join(",")' || echo "proxmox1"
 
 tasks:
   default:
@@ -348,7 +343,6 @@ tasks:
           -var="node_cores={{.TALOS_NODE_CORES}}" \
           -var="node_memory={{.TALOS_NODE_MEMORY}}" \
           -var="node_disk={{.TALOS_NODE_DISK}}" \
-          -var="pve_nodes={{.PVE_NODES}}" \
           -var="default_storage={{.DISK_STORAGE}}"
 
   talos-apply:
@@ -366,7 +360,6 @@ tasks:
           -var="node_cores={{.TALOS_NODE_CORES}}" \
           -var="node_memory={{.TALOS_NODE_MEMORY}}" \
           -var="node_disk={{.TALOS_NODE_DISK}}" \
-          -var="pve_nodes={{.PVE_NODES}}" \
           -var="default_storage={{.DISK_STORAGE}}"
 
   talos-output:

@@ -42,20 +42,26 @@ resource "proxmox_virtual_environment_vm" "talos_node" {
     enabled = true
   }
 
-  # Boot order
-  boot_order = ["scsi0"]
+  # Boot from ISO first, then disk
+  boot_order = ["ide2", "scsi0"]
 
   # Operating system
   operating_system {
     type = "l26"
   }
 
-  # Main disk - import from Talos image
+  # CD-ROM with Talos ISO
+  cdrom {
+    enabled   = true
+    file_id   = var.talos_iso_id
+    interface = "ide2"
+  }
+
+  # Main disk - empty, Talos will install here
   disk {
     interface    = "scsi0"
     datastore_id = var.disk_storage
     size         = var.disk_size
-    file_id      = var.talos_image_id
     discard      = "on"
     ssd          = true
   }
@@ -69,9 +75,4 @@ resource "proxmox_virtual_environment_vm" "talos_node" {
     bridge = var.bridge
   }
 
-  lifecycle {
-    ignore_changes = [
-      disk[0].file_id,
-    ]
-  }
 }

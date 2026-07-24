@@ -38,7 +38,7 @@ variable "disk_size" {
   default     = 50
 }
 
-variable "talos_image_id" {
-  description = "File ID of the Talos disk image"
+variable "talos_iso_id" {
+  description = "File ID of the Talos ISO image"
   type        = string
 }

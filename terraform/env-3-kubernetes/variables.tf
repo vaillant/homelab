@@ -54,11 +54,6 @@ variable "node_disk" {
   default     = 50
 }
 
-variable "pve_nodes" {
-  description = "Comma-separated list of Proxmox nodes"
-  type        = string
-}
-
 variable "default_storage" {
   description = "Default storage for VM disks"
   type        = string

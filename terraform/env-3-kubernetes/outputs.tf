@@ -6,7 +6,7 @@ output "talosconfig" {
 
 output "kubeconfig" {
   description = "Kubernetes configuration (kubeconfig)"
-  value       = data.talos_cluster_kubeconfig.this.kubeconfig_raw
+  value       = talos_cluster_kubeconfig.this.kubeconfig_raw
   sensitive   = true
 }
 
@@ -29,4 +29,14 @@ output "cluster_endpoint" {
 output "cluster_name" {
   description = "Cluster name"
   value       = var.cluster_name
+}
+
+output "pve_nodes_discovered" {
+  description = "Proxmox nodes discovered via API"
+  value       = local.pve_nodes
+}
+
+output "actual_node_count" {
+  description = "Actual number of Talos nodes (min of requested and available PVE nodes)"
+  value       = local.actual_node_count
 }
