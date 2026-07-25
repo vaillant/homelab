@@ -35,11 +35,13 @@ locals {
   cluster_endpoint = "https://${local.nodes["talos-1"].ip_address}:6443"
 }
 
-# Download Talos ISO from Image Factory (ISO doesn't need decompression)
+# Download Talos ISO to each PVE node that will host a Talos VM
 resource "proxmox_download_file" "talos_image" {
+  for_each = toset(distinct([for node in local.nodes : node.target_node]))
+
   content_type = "iso"
   datastore_id = "local"
-  node_name    = local.pve_nodes[0]
+  node_name    = each.key
   file_name    = "talos-${var.talos_version}-nocloud-amd64.iso"
   url          = replace(var.talos_image_url, ".raw.xz", ".iso")
 }
@@ -74,7 +76,11 @@ data "talos_machine_configuration" "nodes" {
         network = {
           hostname = each.key
           interfaces = [{
-            interface = "eth0"
+            # Use deviceSelector to find the virtio network device (works regardless of interface name)
+            deviceSelector = {
+              driver = "virtio_net"
+            }
+            dhcp      = false
             addresses = ["${each.value.ip_address}/24"]
             routes = [{
               network = "0.0.0.0/0"
@@ -104,16 +110,22 @@ module "talos_nodes" {
   memory    = each.value.memory
   disk_size = each.value.disk_size
 
-  talos_iso_id = proxmox_download_file.talos_image.id
+  talos_iso_id = proxmox_download_file.talos_image[each.value.target_node].id
 }
 
 # Apply machine configuration to each node
+# Phase 1: Connect to DHCP IP (from guest agent), apply config with static IP
+# Phase 2: Talos reboots with static IP from config
 resource "talos_machine_configuration_apply" "nodes" {
   for_each = local.nodes
 
   client_configuration        = talos_machine_secrets.this.client_configuration
   machine_configuration_input = data.talos_machine_configuration.nodes[each.key].machine_configuration
-  node                        = each.value.ip_address
+
+  # node = target identity (static IP from config)
+  # endpoint = how to connect (DHCP IP from guest agent)
+  node     = each.value.ip_address
+  endpoint = module.talos_nodes[each.key].dhcp_ip
 
   depends_on = [module.talos_nodes]
 }

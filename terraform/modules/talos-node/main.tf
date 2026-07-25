@@ -37,13 +37,14 @@ resource "proxmox_virtual_environment_vm" "talos_node" {
     dedicated = var.memory
   }
 
-  # QEMU guest agent
+  # QEMU guest agent - wait for it to report IP addresses
   agent {
     enabled = true
+    timeout = "5m"
   }
 
-  # Boot from ISO first, then disk
-  boot_order = ["ide2", "scsi0"]
+  # Boot from disk first, fallback to ISO (empty disk falls back to ISO on first boot)
+  boot_order = ["scsi0", "ide2"]
 
   # Operating system
   operating_system {
@@ -52,7 +53,6 @@ resource "proxmox_virtual_environment_vm" "talos_node" {
 
   # CD-ROM with Talos ISO
   cdrom {
-    enabled   = true
     file_id   = var.talos_iso_id
     interface = "ide2"
   }

@@ -400,6 +400,23 @@ tasks:
         kubectl --kubeconfig ~/.kube/config-homelab get nodes || true
         kubectl --kubeconfig ~/.kube/config-homelab get pods -A || true
 
+  talos-destroy:
+    desc: Destroy Talos Kubernetes cluster
+    deps: [env-verify]
+    dir: terraform/env-3-kubernetes
+    cmds:
+      - |
+        tofu destroy -auto-approve -refresh=false \
+          -var="cluster_name={{.TALOS_CLUSTER_NAME}}" \
+          -var="talos_version={{.TALOS_VERSION}}" \
+          -var="node_count={{.TALOS_NODE_COUNT}}" \
+          -var="gateway={{.TALOS_GATEWAY}}" \
+          -var="ip_base={{.TALOS_IP_BASE}}" \
+          -var="node_cores={{.TALOS_NODE_CORES}}" \
+          -var="node_memory={{.TALOS_NODE_MEMORY}}" \
+          -var="node_disk={{.TALOS_NODE_DISK}}" \
+          -var="default_storage={{.DISK_STORAGE}}"
+
   talos-secrets-backup:
     desc: Backup Talos machine secrets to 1Password
     dir: terraform/env-3-kubernetes

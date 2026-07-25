@@ -40,3 +40,13 @@ output "actual_node_count" {
   description = "Actual number of Talos nodes (min of requested and available PVE nodes)"
   value       = local.actual_node_count
 }
+
+output "dhcp_ips" {
+  description = "DHCP IPs assigned during initial boot (before static config applied)"
+  value       = { for k, v in module.talos_nodes : k => v.dhcp_ip }
+}
+
+output "mac_addresses" {
+  description = "MAC addresses of Talos VMs (for DHCP reservation reference)"
+  value       = { for k, v in module.talos_nodes : k => v.mac_address }
+}
