@@ -32,9 +32,16 @@ All other tools (OpenTofu, 1Password CLI, etc.) are provided by the Nix shell en
 * Currently root SSH access assumed. Change to normal use access.
 * Update Token Rights (see Proxmox Roles)
 * Check: Why is the private SSH Key required?
-* Cleanup checks in Taskfile
-* Add tags to created VM.
-* Change to default nix, away from DeterminateSystems 
+* Add tags to created VM & LXC
+* Add more detailed notes for VM and LXC (git URL, admin URL, ...)
+* login password for Nix (and nix-builder)? I.e. how to use local PVE console
+
+Major Redesign:
+* Restructure to make independet usage of the phases easier: Seperate Taskfile
+* Replace 1Password with SOPS
+* Auto-detect and auto-generate requirements: Terraform token user, public key, network settings, ...
+* For 1st usage, is there a tool to a) ask for values interactively b) detext certain values (network setting, public key)
+
 
 Very Minor:
 * Ubiquiti Web UI does not show correct hostname, but "ubuntu" for nix-builder. IMHO a Ubiquiti bug.
@@ -92,17 +99,7 @@ Environment variables are managed automatically via Taskfile using 1Password CLI
 | `public key` | SSH public key for VM access |
 | `private key` | SSH private key (used by Terraform for disk operations) |
 
-The Taskfile automatically reads these secrets:
-```yaml
-env:
-  PROXMOX_VE_ENDPOINT:
-    sh: op read "op://Homelab/Proxmox/url" | sed 's|/api2/json||'
-  PROXMOX_VE_API_TOKEN:
-    sh: echo "$(op read 'op://Homelab/Proxmox/token_id')=$(op read 'op://Homelab/Proxmox/token_secret')"
-  PROXMOX_VE_INSECURE: "true"
-  PROXMOX_VE_SSH_PRIVATE_KEY:
-    sh: op read "op://Homelab/Homelab SSH Key/private key"
-```
+The Taskfile automatically reads these secrets using the 1Password `op` command.
 
 Verify your setup:
 ```bash
@@ -110,43 +107,9 @@ nix-shell
 task check
 ```
 
-### 4. Deploy the Nix Builder VM
 
-The nix-builder is an Ubuntu VM with Nix installed, used as a remote builder for creating NixOS images. This is necessary when your local machine has a different architecture (e.g., ARM Mac) than Proxmox (x86_64).
 
-```bash
-# Enter nix-shell if not already
-nix-shell
 
-# Initialize Terraform (first time only)
-task builder-init
-
-# Preview changes
-task builder-plan
-
-# Deploy the builder VM
-task builder-apply
-```
-
-The builder VM will be created with:
-- Ubuntu 24.04 cloud image
-- Nix package manager (Determinate Systems installer)
-- QEMU guest agent
-- SSH access configured via your 1Password SSH key
-
-Wait 2-3 minutes for cloud-init to complete, then verify:
-```bash
-# Get the builder IP
-task builder-output
-
-# Test SSH and Nix installation
-ssh root@<builder-ip> nix --version
-```
-
-Once the builder is ready, you can use it for Phase 2 (building NixOS images):
-```bash
-task build-lxc
-```
 
 ## Troubleshooting
 

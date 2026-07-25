@@ -14,17 +14,28 @@ This file documents architectural decisions and guidelines for Claude Code.
 
 **Decision:** All LXC containers and VM's shoudl be NixOS based. They are build using nix locally. Because of this, a builder is needed first to build the different NixOs VM and LXC. To build these, the builder is created on the Proxmox cluster in case the local PC has a different architecture than Proxmox (PC has ARM, Proxmox has x86). 
 
+## All changes done in declarative files, not by CLI.
+
+**Decision:** When something does not work and needs a change, then execute the change by changing files in this repo and rerun tasks. Do NOT SSH into the machines to fix the issues by using a local CLI commant.
+
+## All deployed component should be verified.
+
+**Decision:** When deploying a component (with Terrform, NixOs or Kubectl), add a Task "verify" to the Taskfile. This task should do some basic varification, e.g. is the port of the service available. 
+
 ## Terraform and Terraform Provider: Tofu and bpg/proxmox
+
+
+
 
 **Decision:** Use Tofu as Terraform engine. Use the [bpg/proxmox](https://registry.terraform.io/providers/bpg/proxmox) provider instead of telmate/proxmox. The bpg provider is actively maintained, has better documentation, and uses environment variables `PROXMOX_VE_ENDPOINT` and `PROXMOX_VE_API_TOKEN` for authentication.
 
-## NixOS Builder: Debian
+## NixOS Builder: Ubuntu
 
-It was more or less impossible to find a stable NixOS VM Image supporting also cloud-init, two LLM's and me failed. So I selected debian to build NixOS imagaes.
+It was more or less impossible to find a stable NixOS VM Image supporting also cloud-init, two LLM's and me failed. So I selected Ubuntu to build NixOS imagaes. Debain had bad cloud-init support, which caused failures on Proxmox. 
 
 ## Deployment Phases
 
-1. **Phase 1: Deploy builder** - Set up NixOS build infrastructure
+1. **Phase 1: Deploy builder** - Set up NixOS build infrastructure, i.e. Ubuntu with Nixinstalled.
 2. **Phase 2: Build NixOS image** - Build custom LXC images
 3. **Phase 3: Deploy production** - Deploy VMs and containers
 ## Project Structure
