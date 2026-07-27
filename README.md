@@ -37,9 +37,10 @@ All other tools (OpenTofu, 1Password CLI, etc.) are provided by the Nix shell en
 * login password for Nix (and nix-builder)? I.e. how to use local PVE console
 
 Major Redesign:
-* Restructure to make independet usage of the phases easier: Seperate Taskfile
-* Replace 1Password with SOPS
-* Auto-detect and auto-generate requirements: Terraform token user, public key, network settings, ...
+* Study existing terraform-talos-proxmox repos
+* Restructure to make independet usage of the phases easier: Top level Taskfile, Seperate Taskfile per part, terraform folder per part. 
+* Replace 1Password with SOPS: Install via nix-shell
+* Auto-detect and auto-generate requirements: Terraform token user, public key, network settings, cluster size, ... . Only requirement is: Proxmox SSH access.
 * For 1st usage, is there a tool to a) ask for values interactively b) detext certain values (network setting, public key)
 
 
