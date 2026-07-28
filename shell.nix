@@ -12,6 +12,7 @@ pkgs.mkShell {
     # Kubernetes tools
     kubectl         # Kubernetes CLI
     talosctl        # Talos Linux CLI
+    cilium-cli      # Cilium CLI 
 
     # Optional but useful tools
     curl            # HTTP client
@@ -42,6 +43,11 @@ pkgs.mkShell {
     # Set kubeconfig if homelab config exists
     if [ -f "$HOME/.kube/config-homelab" ]; then
       export KUBECONFIG="$HOME/.kube/config-homelab"
+    fi
+
+    # Set kubeconfig if homelab config exists
+    if [ -f "$HOME/.kube/config-cilium" ]; then
+      export KUBECONFIG="$HOME/.kube/config-cilium"
     fi
 
     echo ""

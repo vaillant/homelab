@@ -43,9 +43,16 @@ Major Redesign:
 * Auto-detect and auto-generate requirements: Terraform token user, public key, network settings, cluster size, ... . Only requirement is: Proxmox SSH access.
 * For 1st usage, is there a tool to a) ask for values interactively b) detext certain values (network setting, public key)
 
+Env-4-k8s-cilium:
+* Talos Console not shown in Proxmox VM's Console
+* Is the Talos CCM really needed, why was it no needed in env-3? Diable external cloud-provider mode?
+* Extend Taskfile with Cilium Checks and UI install?
+* Minor: Nodes keep DHCP adresses too long? (see also QEMU agent status in Proxmox UI)
+* Minor: REname cluster to "talos"
+
 
 Very Minor:
-* Ubiquiti Web UI does not show correct hostname, but "ubuntu" for nix-builder. IMHO a Ubiquiti bug.
+* Ubiquiti Web UI does not show correct hostname, but e.g. "ubuntu" for nix-builder. IMHO a Ubiquiti bug.
 
 ## Quick Start
 
