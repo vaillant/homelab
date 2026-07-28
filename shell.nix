@@ -12,6 +12,8 @@ pkgs.mkShell {
     # Kubernetes tools
     kubectl         # Kubernetes CLI
     talosctl        # Talos Linux CLI
+    cilium-cli      # Cilium CLI
+    hubble          # Hubble CLI (Cilium flow observability)
 
     # Optional but useful tools
     curl            # HTTP client
