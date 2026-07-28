@@ -17,6 +17,12 @@ version: '3'
 # The module enables external cloud-provider mode but does not ship a
 # controller-manager, so `deploy-ccm` is required before general workloads
 # can schedule (until then all nodes carry the uninitialized taint).
+#
+# Day-2 Cilium CLI ops (against the module-managed install):
+#   cilium:status              cilium status --wait
+#   cilium:connectivity-test   full e2e connectivity suite (slow)
+#   cilium:hubble-status       Hubble flow-observability status
+#   cilium:hubble-ui           port-forward + open the Hubble UI
 
 vars:
   # Local paths for the generated configs (kept distinct from env-3's).
@@ -93,6 +99,45 @@ tasks:
         echo ""
         echo "Pods not Running/Completed (should be none):"
         $KC get pods -A --no-headers 2>/dev/null | awk '$4!="Running" && $4!="Completed"{print $1,$2,$4}' || true
+
+  #
+  # Cilium CLI operations
+  #
+  # These use the `cilium` CLI (from shell.nix) against the cluster's own
+  # kubeconfig. Cilium itself is installed and owned by the Terraform module
+  # (see main.tf) — these tasks only observe and exercise the install; do not
+  # `cilium install`/`upgrade` here or it will fight the module's Helm release.
+
+  status:
+    desc: Show Cilium install status (cilium status --wait)
+    env:
+      KUBECONFIG: '{{.KUBECONFIG_PATH}}'
+    cmds:
+      - cilium status --wait
+
+  connectivity-test:
+    desc: Run the Cilium end-to-end connectivity test suite (slow; creates a test namespace)
+    env:
+      KUBECONFIG: '{{.KUBECONFIG_PATH}}'
+    cmds:
+      - cilium connectivity test
+
+  hubble-status:
+    desc: Show Hubble status (flow observability layer)
+    env:
+      KUBECONFIG: '{{.KUBECONFIG_PATH}}'
+    cmds:
+      - cilium hubble port-forward &
+      - sleep 3
+      - hubble status
+      - pkill -f "cilium hubble port-forward" || true
+
+  hubble-ui:
+    desc: Open the Hubble UI in a browser (port-forwards; Ctrl-C to stop)
+    env:
+      KUBECONFIG: '{{.KUBECONFIG_PATH}}'
+    cmds:
+      - cilium hubble ui
 
   destroy:
     desc: Destroy the Talos+Cilium cluster
