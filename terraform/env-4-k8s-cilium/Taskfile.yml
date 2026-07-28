@@ -1,0 +1,101 @@
+version: '3'
+
+# Kubernetes on Talos Linux with Cilium CNI, built with the community
+# module github.com/alexmorbo/terraform-proxmox-talos.
+#
+# Included by the root Taskfile with `dir` set to this folder, so `tofu`
+# runs here automatically. Shared env (Proxmox credentials) is inherited
+# from the root Taskfile; reference root-level tasks with a leading colon,
+# e.g. `:env-verify`. Cluster configuration is hardcoded in main.tf.
+#
+# Bring-up order:
+#   cilium:apply        create VMs, bootstrap cluster, install Cilium
+#   cilium:kubeconfig   write ~/.kube/config-cilium (also saves talosconfig)
+#   cilium:deploy-ccm   deploy Talos CCM -> clears the uninitialized taint
+#   cilium:verify       check nodes/taints/Cilium/CCM
+#
+# The module enables external cloud-provider mode but does not ship a
+# controller-manager, so `deploy-ccm` is required before general workloads
+# can schedule (until then all nodes carry the uninitialized taint).
+
+vars:
+  # Local paths for the generated configs (kept distinct from env-3's).
+  # Use ${HOME} rather than ~ so it expands in every shell context.
+  KUBECONFIG_PATH: '{{.KUBECONFIG_PATH | default "${HOME}/.kube/config-cilium"}}'
+  TALOSCONFIG_PATH: '{{.TALOSCONFIG_PATH | default "${HOME}/.talos/config-cilium"}}'
+  # Pinned Talos cloud-controller-manager release.
+  CCM_VERSION: '{{.CCM_VERSION | default "v1.13.0"}}'
+  # A control-plane node to talk to (first CP static IP; see main.tf ip_start).
+  CP_ENDPOINT: '{{.CP_ENDPOINT | default "192.168.0.31"}}'
+
+tasks:
+  init:
+    desc: Initialize the Talos+Cilium environment (downloads the module)
+    cmds:
+      - tofu init
+
+  plan:
+    desc: Plan Talos+Cilium cluster changes
+    deps: [':env-verify']
+    cmds:
+      - tofu plan
+
+  apply:
+    desc: Apply Talos+Cilium changes (creates VMs, bootstraps cluster, installs Cilium)
+    deps: [':env-verify']
+    cmds:
+      - tofu apply -auto-approve
+
+  output:
+    desc: Show cluster outputs
+    cmds:
+      - tofu output
+
+  talosconfig:
+    desc: Save talosconfig to {{.TALOSCONFIG_PATH}}
+    cmds:
+      - mkdir -p "$(dirname {{.TALOSCONFIG_PATH}})"
+      - |
+        tofu output -raw talosconfig > {{.TALOSCONFIG_PATH}}
+        echo "Talosconfig saved to {{.TALOSCONFIG_PATH}}"
+
+  kubeconfig:
+    # The module's `kubeconfig` output is a structured object, not raw YAML,
+    # so fetch it with talosctl (endpoints come from the talosconfig).
+    desc: Save kubeconfig to {{.KUBECONFIG_PATH}}
+    deps: [talosconfig]
+    cmds:
+      - mkdir -p "$(dirname {{.KUBECONFIG_PATH}})"
+      - talosctl --talosconfig {{.TALOSCONFIG_PATH}} -n {{.CP_ENDPOINT}} kubeconfig --force --merge=false {{.KUBECONFIG_PATH}}
+      - echo "Kubeconfig saved to {{.KUBECONFIG_PATH}}"
+      - echo "Use export KUBECONFIG={{.KUBECONFIG_PATH}}"
+
+  deploy-ccm:
+    desc: Deploy the Talos cloud-controller-manager (clears the uninitialized taint)
+    deps: [kubeconfig]
+    cmds:
+      - kubectl --kubeconfig {{.KUBECONFIG_PATH}} apply -f https://raw.githubusercontent.com/siderolabs/talos-cloud-controller-manager/{{.CCM_VERSION}}/docs/deploy/cloud-controller-manager.yml
+      - kubectl --kubeconfig {{.KUBECONFIG_PATH}} -n kube-system rollout status deploy/talos-cloud-controller-manager --timeout=120s
+
+  verify:
+    desc: Verify the cluster is healthy (nodes, taints, Cilium, CCM)
+    cmds:
+      - |
+        KC="kubectl --kubeconfig {{.KUBECONFIG_PATH}}"
+        echo "Nodes (taints should be empty once the CCM has run):"
+        $KC get nodes -o custom-columns='NAME:.metadata.name,STATUS:.status.conditions[-1].type,TAINTS:.spec.taints[*].key' || true
+        echo ""
+        echo "Talos cloud-controller-manager:"
+        $KC -n kube-system get deploy talos-cloud-controller-manager || true
+        echo ""
+        echo "Cilium (agents + operator):"
+        $KC -n kube-system get pods -l app.kubernetes.io/part-of=cilium -o wide || true
+        echo ""
+        echo "Pods not Running/Completed (should be none):"
+        $KC get pods -A --no-headers 2>/dev/null | awk '$4!="Running" && $4!="Completed"{print $1,$2,$4}' || true
+
+  destroy:
+    desc: Destroy the Talos+Cilium cluster
+    deps: [':env-verify']
+    cmds:
+      - tofu destroy -auto-approve
