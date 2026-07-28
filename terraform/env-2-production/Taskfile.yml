@@ -1,0 +1,110 @@
+version: '3'
+
+# Phase 3: Production VMs and containers.
+# Phase 4: Deploy NixOS configurations to the running containers.
+#
+# Included by the root Taskfile with `dir` set to this folder, so `tofu`
+# runs here automatically. Shared env and vars are inherited from the
+# root Taskfile. Reference root-level tasks with a leading colon. The
+# deploy tasks reference the flake at ../../nix, relative to this folder.
+
+tasks:
+  init:
+    desc: Initialize production environment
+    cmds:
+      - tofu init
+
+  plan:
+    desc: Plan production changes
+    deps: [':env-verify']
+    cmds:
+      - tofu plan -var="default_storage={{.DISK_STORAGE}}"
+
+  apply:
+    desc: Apply production changes
+    deps: [':env-verify']
+    cmds:
+      - tofu apply -auto-approve -var="default_storage={{.DISK_STORAGE}}"
+
+  output:
+    desc: Show production outputs
+    cmds:
+      - tofu output
+
+  verify:
+    desc: Verify containers are reachable (ping, DNS, SSH)
+    cmds:
+      - |
+        tofu refresh -var="default_storage={{.DISK_STORAGE}}" >/dev/null 2>&1
+        HOSTNAMES=$(tofu output -json lxc_container_hostnames 2>/dev/null)
+        IPS=$(tofu output -json lxc_container_ips 2>/dev/null)
+
+        if [ -z "$HOSTNAMES" ] || [ "$HOSTNAMES" = "{}" ]; then
+          echo "No containers found in terraform state"
+          exit 0
+        fi
+
+        for KEY in $(echo "$HOSTNAMES" | jq -r 'keys[]'); do
+          HOSTNAME=$(echo "$HOSTNAMES" | jq -r --arg k "$KEY" '.[$k]')
+          IP=$(echo "$IPS" | jq -r --arg k "$KEY" '.[$k] // empty')
+          FQDN="${HOSTNAME}.{{.DNS_SUFFIX}}"
+
+          # Test ping to IP
+          if [ -n "$IP" ]; then
+            if ping -c 1 -W 2 "$IP" >/dev/null 2>&1; then
+              PING_OK="✓"
+            else
+              PING_OK="✗"
+            fi
+          else
+            PING_OK="-"
+            IP="no-ip"
+          fi
+
+          # Test DNS resolution
+          if dig +short "$FQDN" A | head -1 | grep -q .; then
+            DNS_OK="✓"
+          else
+            DNS_OK="✗"
+          fi
+
+          # Test SSH (use IP if available, else FQDN)
+          SSH_TARGET="${IP}"
+          [ "$IP" = "no-ip" ] && SSH_TARGET="$FQDN"
+          if ssh -o ConnectTimeout=5 -o BatchMode=yes -o StrictHostKeyChecking=no "root@$SSH_TARGET" "echo ok" >/dev/null 2>&1; then
+            SSH_OK="✓"
+          else
+            SSH_OK="✗"
+          fi
+
+          echo "$HOSTNAME ($IP) ping:$PING_OK dns:$DNS_OK ssh:$SSH_OK"
+        done
+
+  #
+  # Phase 4: Deploy NixOS configurations
+  #
+
+  deploy-cloudflared:
+    desc: Deploy cloudflared configuration
+    cmds:
+      - echo "Deploying cloudflared to svc-cloudflared.{{.DNS_SUFFIX}}..."
+      - nixos-rebuild switch --target-host root@svc-cloudflared.{{.DNS_SUFFIX}} --flake ../../nix#cloudflared --use-remote-sudo
+
+  deploy-pulse:
+    desc: Deploy pulse configuration
+    cmds:
+      - echo "Deploying pulse to svc-pulse.{{.DNS_SUFFIX}}..."
+      - nixos-rebuild switch --target-host root@svc-pulse.{{.DNS_SUFFIX}} --flake ../../nix#pulse --use-remote-sudo
+
+  deploy-bose-soundtouch:
+    desc: Deploy bose-soundtouch configuration
+    cmds:
+      - echo "Deploying bose-soundtouch to svc-bose-soundtouch.{{.DNS_SUFFIX}}..."
+      - nixos-rebuild switch --target-host root@svc-bose-soundtouch.{{.DNS_SUFFIX}} --flake ../../nix#bose-soundtouch --use-remote-sudo
+
+  deploy-all:
+    desc: Deploy all container configurations
+    cmds:
+      - task: deploy-cloudflared
+      - task: deploy-pulse
+      - task: deploy-bose-soundtouch

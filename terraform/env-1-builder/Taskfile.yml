@@ -1,0 +1,98 @@
+version: '3'
+
+# Phase 1: NixOS builder environment.
+# Phase 2: Build and upload the NixOS LXC image (built on the builder).
+#
+# Included by the root Taskfile with `dir` set to this folder, so `tofu`
+# runs here automatically. Shared env (Proxmox credentials) and vars
+# (NODE, storage names, ...) are inherited from the root Taskfile.
+# Reference root-level tasks with a leading colon, e.g. `:env-verify`.
+# Paths to files outside this folder (../../nix, ../env-2-production) are
+# relative to this directory.
+
+tasks:
+  init:
+    desc: Initialize builder environment
+    cmds:
+      - tofu init
+
+  plan:
+    desc: Plan builder changes
+    deps: [':env-verify']
+    cmds:
+      - |
+        tofu plan \
+          -var="target_node={{.NODE}}" \
+          -var="storage={{.IMAGE_STORAGE}}" \
+          -var="disk_storage={{.DISK_STORAGE}}" \
+          -var="nixos_version={{.NIXOS_VERSION}}" \
+          -var="ssh_pubkey={{.SSH_PUBKEY}}"
+
+  apply:
+    desc: Apply builder changes
+    deps: [':env-verify']
+    cmds:
+      - |
+        tofu apply -auto-approve \
+          -var="target_node={{.NODE}}" \
+          -var="storage={{.IMAGE_STORAGE}}" \
+          -var="disk_storage={{.DISK_STORAGE}}" \
+          -var="nixos_version={{.NIXOS_VERSION}}" \
+          -var="ssh_pubkey={{.SSH_PUBKEY}}"
+
+  output:
+    desc: Show builder outputs (refreshes state first)
+    cmds:
+      - |
+        tofu refresh \
+          -var="target_node={{.NODE}}" \
+          -var="storage={{.IMAGE_STORAGE}}" \
+          -var="disk_storage={{.DISK_STORAGE}}" \
+          -var="nixos_version={{.NIXOS_VERSION}}" \
+          -var="ssh_pubkey={{.SSH_PUBKEY}}"
+      - tofu output
+
+  #
+  # Phase 2: Build and upload NixOS LXC image
+  #
+
+  lxc-build:
+    desc: Build NixOS LXC image on nix-builder and upload to Proxmox
+    deps: [':env-verify', ':secrets-init']
+    vars:
+      # Versioned filename with timestamp
+      LXC_TEMPLATE_NAME: 'nixos-lxc-{{now | date "20060102-150405"}}.tar.xz'
+    cmds:
+      - echo "Building NixOS LXC image on {{.BUILDER_HOST}}..."
+      # Copy nix/ directory to builder (excluding result symlinks)
+      - rsync -avz --delete --exclude='result' --exclude='result-*' ../../nix/ root@{{.BUILDER_HOST}}:/tmp/homelab-nix/
+      # Build on remote builder
+      - ssh root@{{.BUILDER_HOST}} "cd /tmp/homelab-nix && nix build .#proxmox-lxc-base --out-link result"
+      # Upload directly from builder to Proxmox with versioned filename
+      - echo "Uploading {{.LXC_TEMPLATE_NAME}} to Proxmox {{.NODE}}..."
+      - |
+        ssh root@{{.BUILDER_HOST}} "
+          TARBALL=\$(ls /tmp/homelab-nix/result/tarball/*.tar.xz)
+          # Create symlink with versioned name for upload
+          ln -sf \$TARBALL /tmp/{{.LXC_TEMPLATE_NAME}}
+          echo \"Uploading as {{.LXC_TEMPLATE_NAME}}...\"
+          curl -s -k -f \
+            -H \"Authorization: PVEAPIToken=$PROXMOX_VE_API_TOKEN\" \
+            -H 'Content-Type: multipart/form-data' \
+            -F 'content=vztmpl' \
+            -F 'filename=@/tmp/{{.LXC_TEMPLATE_NAME}}' \
+            \"${PROXMOX_VE_ENDPOINT}/api2/json/nodes/{{.NODE}}/storage/{{.IMAGE_STORAGE}}/upload\" \
+            | jq -r '\"✓ Uploaded: \(.data)\"' \
+            || (echo '✗ Failed to upload template' && exit 1)
+          rm /tmp/{{.LXC_TEMPLATE_NAME}}
+        "
+      # Write template path to auto.tfvars for the production environment
+      - |
+        echo "default_lxc_template = \"{{.IMAGE_STORAGE}}:vztmpl/{{.LXC_TEMPLATE_NAME}}\"" \
+          > ../env-2-production/lxc-template.auto.tfvars
+        echo "✓ Updated terraform/env-2-production/lxc-template.auto.tfvars"
+      # Cleanup
+      - ssh root@{{.BUILDER_HOST}} "rm -rf /tmp/homelab-nix"
+      - echo "✓ Build and upload complete"
+      - echo ""
+      - echo "Run 'task production:apply' to recreate containers with new image"

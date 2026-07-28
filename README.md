@@ -105,7 +105,7 @@ The Taskfile automatically reads these secrets using the 1Password `op` command.
 Verify your setup:
 ```bash
 nix-shell
-task check
+task env-verify
 ```
 
 

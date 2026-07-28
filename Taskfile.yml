@@ -1,5 +1,18 @@
 version: '3'
 
+# Root Taskfile.
+#
+# Shared env and vars are declared here once and inherited by every
+# included Taskfile. Phase-specific tasks live next to the code they
+# operate on and are pulled in via `includes` below:
+#
+#   builder:*     terraform/env-1-builder/Taskfile.yml    (Phase 1 & 2)
+#   production:*  terraform/env-2-production/Taskfile.yml  (Phase 3 & 4)
+#   talos:*       terraform/env-3-kubernetes/Taskfile.yml  (Phase 5)
+#   cilium:*      terraform/env-4-k8s-cilium/Taskfile.yml  (Phase 6)
+#
+# Run `task` (or `task --list-all`) to see everything.
+
 env:
   # Proxmox credentials from 1Password (bpg/proxmox provider format)
   PROXMOX_VE_ENDPOINT:
@@ -31,6 +44,20 @@ vars:
   TALOS_NODE_CORES: '{{.TALOS_NODE_CORES | default "4"}}'
   TALOS_NODE_MEMORY: '{{.TALOS_NODE_MEMORY | default "8192"}}'
   TALOS_NODE_DISK: '{{.TALOS_NODE_DISK | default "50"}}'
+
+includes:
+  builder:
+    taskfile: ./terraform/env-1-builder/Taskfile.yml
+    dir: ./terraform/env-1-builder
+  production:
+    taskfile: ./terraform/env-2-production/Taskfile.yml
+    dir: ./terraform/env-2-production
+  talos:
+    taskfile: ./terraform/env-3-kubernetes/Taskfile.yml
+    dir: ./terraform/env-3-kubernetes
+  cilium:
+    taskfile: ./terraform/env-4-k8s-cilium/Taskfile.yml
+    dir: ./terraform/env-4-k8s-cilium
 
 tasks:
   default:
@@ -74,180 +101,6 @@ tasks:
       - tofu fmt -recursive
 
   #
-  # Phase 1: Deploy builder
-  #
-
-  builder-init:
-    desc: Initialize builder environment
-    dir: terraform/env-1-builder
-    cmds:
-      - tofu init
-
-  builder-plan:
-    desc: Plan builder changes
-    deps: [env-verify]
-    dir: terraform/env-1-builder
-    cmds:
-      - |
-        tofu plan \
-          -var="target_node={{.NODE}}" \
-          -var="storage={{.IMAGE_STORAGE}}" \
-          -var="disk_storage={{.DISK_STORAGE}}" \
-          -var="nixos_version={{.NIXOS_VERSION}}" \
-          -var="ssh_pubkey={{.SSH_PUBKEY}}"
-
-  builder-apply:
-    desc: Apply builder changes
-    deps: [env-verify]
-    dir: terraform/env-1-builder
-    cmds:
-      - |
-        tofu apply -auto-approve \
-          -var="target_node={{.NODE}}" \
-          -var="storage={{.IMAGE_STORAGE}}" \
-          -var="disk_storage={{.DISK_STORAGE}}" \
-          -var="nixos_version={{.NIXOS_VERSION}}" \
-          -var="ssh_pubkey={{.SSH_PUBKEY}}"
-
-  builder-output:
-    desc: Show builder outputs (refreshes state first)
-    dir: terraform/env-1-builder
-    cmds:
-      - |
-        tofu refresh \
-          -var="target_node={{.NODE}}" \
-          -var="storage={{.IMAGE_STORAGE}}" \
-          -var="disk_storage={{.DISK_STORAGE}}" \
-          -var="nixos_version={{.NIXOS_VERSION}}" \
-          -var="ssh_pubkey={{.SSH_PUBKEY}}"
-      - tofu output
-
-  #
-  # Phase 2: Build and upload NixOS LXC image
-  #
-
-  lxc-build:
-    desc: Build NixOS LXC image on nix-builder and upload to Proxmox
-    deps: [env-verify, secrets-init]
-    vars:
-      # Versioned filename with timestamp
-      LXC_TEMPLATE_NAME: 'nixos-lxc-{{now | date "20060102-150405"}}.tar.xz'
-    cmds:
-      - echo "Building NixOS LXC image on {{.BUILDER_HOST}}..."
-      # Copy nix/ directory to builder (excluding result symlinks)
-      - rsync -avz --delete --exclude='result' --exclude='result-*' nix/ root@{{.BUILDER_HOST}}:/tmp/homelab-nix/
-      # Build on remote builder
-      - ssh root@{{.BUILDER_HOST}} "cd /tmp/homelab-nix && nix build .#proxmox-lxc-base --out-link result"
-      # Upload directly from builder to Proxmox with versioned filename
-      - echo "Uploading {{.LXC_TEMPLATE_NAME}} to Proxmox {{.NODE}}..."
-      - |
-        ssh root@{{.BUILDER_HOST}} "
-          TARBALL=\$(ls /tmp/homelab-nix/result/tarball/*.tar.xz)
-          # Create symlink with versioned name for upload
-          ln -sf \$TARBALL /tmp/{{.LXC_TEMPLATE_NAME}}
-          echo \"Uploading as {{.LXC_TEMPLATE_NAME}}...\"
-          curl -s -k -f \
-            -H \"Authorization: PVEAPIToken=$PROXMOX_VE_API_TOKEN\" \
-            -H 'Content-Type: multipart/form-data' \
-            -F 'content=vztmpl' \
-            -F 'filename=@/tmp/{{.LXC_TEMPLATE_NAME}}' \
-            \"${PROXMOX_VE_ENDPOINT}/api2/json/nodes/{{.NODE}}/storage/{{.IMAGE_STORAGE}}/upload\" \
-            | jq -r '\"✓ Uploaded: \(.data)\"' \
-            || (echo '✗ Failed to upload template' && exit 1)
-          rm /tmp/{{.LXC_TEMPLATE_NAME}}
-        "
-      # Write template path to auto.tfvars for Terraform
-      - |
-        echo "default_lxc_template = \"{{.IMAGE_STORAGE}}:vztmpl/{{.LXC_TEMPLATE_NAME}}\"" \
-          > terraform/env-2-production/lxc-template.auto.tfvars
-        echo "✓ Updated terraform/env-2-production/lxc-template.auto.tfvars"
-      # Cleanup
-      - ssh root@{{.BUILDER_HOST}} "rm -rf /tmp/homelab-nix"
-      - echo "✓ Build and upload complete"
-      - echo ""
-      - echo "Run 'task production-apply' to recreate containers with new image"
-
-  #
-  # Phase 3: Deploy production
-  #
-
-  production-init:
-    desc: Initialize production environment
-    dir: terraform/env-2-production
-    cmds:
-      - tofu init
-
-  production-plan:
-    desc: Plan production changes
-    deps: [env-verify]
-    dir: terraform/env-2-production
-    cmds:
-      - tofu plan -var="default_storage={{.DISK_STORAGE}}"
-
-  production-apply:
-    desc: Apply production changes
-    deps: [env-verify]
-    dir: terraform/env-2-production
-    cmds:
-      - tofu apply -auto-approve -var="default_storage={{.DISK_STORAGE}}"
-
-  production-output:
-    desc: Show production outputs
-    dir: terraform/env-2-production
-    cmds:
-      - tofu output
-
-  production-verify:
-    desc: Verify containers are reachable (ping, DNS, SSH)
-    cmds:
-      - |
-        cd terraform/env-2-production
-        tofu refresh -var="default_storage={{.DISK_STORAGE}}" >/dev/null 2>&1
-        HOSTNAMES=$(tofu output -json lxc_container_hostnames 2>/dev/null)
-        IPS=$(tofu output -json lxc_container_ips 2>/dev/null)
-
-        if [ -z "$HOSTNAMES" ] || [ "$HOSTNAMES" = "{}" ]; then
-          echo "No containers found in terraform state"
-          exit 0
-        fi
-
-        for KEY in $(echo "$HOSTNAMES" | jq -r 'keys[]'); do
-          HOSTNAME=$(echo "$HOSTNAMES" | jq -r --arg k "$KEY" '.[$k]')
-          IP=$(echo "$IPS" | jq -r --arg k "$KEY" '.[$k] // empty')
-          FQDN="${HOSTNAME}.{{.DNS_SUFFIX}}"
-
-          # Test ping to IP
-          if [ -n "$IP" ]; then
-            if ping -c 1 -W 2 "$IP" >/dev/null 2>&1; then
-              PING_OK="✓"
-            else
-              PING_OK="✗"
-            fi
-          else
-            PING_OK="-"
-            IP="no-ip"
-          fi
-
-          # Test DNS resolution
-          if dig +short "$FQDN" A | head -1 | grep -q .; then
-            DNS_OK="✓"
-          else
-            DNS_OK="✗"
-          fi
-
-          # Test SSH (use IP if available, else FQDN)
-          SSH_TARGET="${IP}"
-          [ "$IP" = "no-ip" ] && SSH_TARGET="$FQDN"
-          if ssh -o ConnectTimeout=5 -o BatchMode=yes -o StrictHostKeyChecking=no "root@$SSH_TARGET" "echo ok" >/dev/null 2>&1; then
-            SSH_OK="✓"
-          else
-            SSH_OK="✗"
-          fi
-
-          echo "$HOSTNAME ($IP) ping:$PING_OK dns:$DNS_OK ssh:$SSH_OK"
-        done
-
-  #
   # Secrets management
   #
 
@@ -264,170 +117,3 @@ tasks:
       - op read "op://Homelab/Proxmox/token_id" > nix/secrets/pulse-proxmox-token-id 2>/dev/null || echo "⚠ Proxmox token_id not found (skipped)"
       - op read "op://Homelab/Proxmox/token_secret" > nix/secrets/pulse-proxmox-token-secret 2>/dev/null || echo "⚠ Proxmox token_secret not found (skipped)"
       - echo "✓ Secrets populated in nix/secrets/"
-
-  #
-  # Phase 4: Deploy NixOS configurations
-  #
-
-  deploy-cloudflared:
-    desc: Deploy cloudflared configuration
-    cmds:
-      - echo "Deploying cloudflared to svc-cloudflared.{{.DNS_SUFFIX}}..."
-      - nixos-rebuild switch --target-host root@svc-cloudflared.{{.DNS_SUFFIX}} --flake ./nix#cloudflared --use-remote-sudo
-
-  deploy-pulse:
-    desc: Deploy pulse configuration
-    cmds:
-      - echo "Deploying pulse to svc-pulse.{{.DNS_SUFFIX}}..."
-      - nixos-rebuild switch --target-host root@svc-pulse.{{.DNS_SUFFIX}} --flake ./nix#pulse --use-remote-sudo
-
-  deploy-bose-soundtouch:
-    desc: Deploy bose-soundtouch configuration
-    cmds:
-      - echo "Deploying bose-soundtouch to svc-bose-soundtouch.{{.DNS_SUFFIX}}..."
-      - nixos-rebuild switch --target-host root@svc-bose-soundtouch.{{.DNS_SUFFIX}} --flake ./nix#bose-soundtouch --use-remote-sudo
-
-  deploy-all:
-    desc: Deploy all container configurations
-    cmds:
-      - task: deploy-cloudflared
-      - task: deploy-pulse
-      - task: deploy-bose-soundtouch
-
-  #
-  # Phase 5: Deploy Kubernetes (Talos)
-  #
-
-  talos-schematic:
-    desc: Register Talos schematic with Image Factory and update tfvars
-    cmds:
-      - echo "Registering schematic with Talos Image Factory..."
-      - |
-        SCHEMATIC_ID=$(curl -s -X POST --data-binary @talos/schematic.yaml https://factory.talos.dev/schematics | jq -r '.id')
-        if [ -z "$SCHEMATIC_ID" ] || [ "$SCHEMATIC_ID" = "null" ]; then
-          echo "ERROR: Failed to get schematic ID from Image Factory"
-          exit 1
-        fi
-        echo "Schematic ID: $SCHEMATIC_ID"
-
-        IMAGE_URL="https://factory.talos.dev/image/${SCHEMATIC_ID}/{{.TALOS_VERSION}}/nocloud-amd64.raw.xz"
-        echo "Image URL: $IMAGE_URL"
-
-        # Write to auto.tfvars
-        cat > terraform/env-3-kubernetes/talos.auto.tfvars << EOF
-        # Generated by 'task talos-schematic' - do not edit manually
-        talos_schematic_id = "${SCHEMATIC_ID}"
-        talos_image_url    = "${IMAGE_URL}"
-        EOF
-
-        echo "✓ Updated terraform/env-3-kubernetes/talos.auto.tfvars"
-
-  talos-init:
-    desc: Initialize Talos Kubernetes environment
-    dir: terraform/env-3-kubernetes
-    cmds:
-      - tofu init
-
-  talos-plan:
-    desc: Plan Talos Kubernetes changes
-    deps: [env-verify]
-    dir: terraform/env-3-kubernetes
-    cmds:
-      - |
-        tofu plan \
-          -var="cluster_name={{.TALOS_CLUSTER_NAME}}" \
-          -var="talos_version={{.TALOS_VERSION}}" \
-          -var="node_count={{.TALOS_NODE_COUNT}}" \
-          -var="gateway={{.TALOS_GATEWAY}}" \
-          -var="ip_base={{.TALOS_IP_BASE}}" \
-          -var="node_cores={{.TALOS_NODE_CORES}}" \
-          -var="node_memory={{.TALOS_NODE_MEMORY}}" \
-          -var="node_disk={{.TALOS_NODE_DISK}}" \
-          -var="default_storage={{.DISK_STORAGE}}"
-
-  talos-apply:
-    desc: Apply Talos Kubernetes changes (creates VMs, bootstraps cluster)
-    deps: [env-verify]
-    dir: terraform/env-3-kubernetes
-    cmds:
-      - |
-        tofu apply -auto-approve \
-          -var="cluster_name={{.TALOS_CLUSTER_NAME}}" \
-          -var="talos_version={{.TALOS_VERSION}}" \
-          -var="node_count={{.TALOS_NODE_COUNT}}" \
-          -var="gateway={{.TALOS_GATEWAY}}" \
-          -var="ip_base={{.TALOS_IP_BASE}}" \
-          -var="node_cores={{.TALOS_NODE_CORES}}" \
-          -var="node_memory={{.TALOS_NODE_MEMORY}}" \
-          -var="node_disk={{.TALOS_NODE_DISK}}" \
-          -var="default_storage={{.DISK_STORAGE}}"
-
-  talos-output:
-    desc: Show Talos cluster outputs
-    dir: terraform/env-3-kubernetes
-    cmds:
-      - tofu output
-
-  talos-kubeconfig:
-    desc: Save kubeconfig to ~/.kube/config-homelab
-    dir: terraform/env-3-kubernetes
-    cmds:
-      - mkdir -p ~/.kube
-      - |
-        tofu output -raw kubeconfig > ~/.kube/config-homelab
-        echo "Kubeconfig saved to ~/.kube/config-homelab"
-        echo "Use: export KUBECONFIG=~/.kube/config-homelab"
-
-  talos-talosconfig:
-    desc: Save talosconfig to ~/.talos/config
-    dir: terraform/env-3-kubernetes
-    cmds:
-      - mkdir -p ~/.talos
-      - |
-        tofu output -raw talosconfig > ~/.talos/config
-        echo "Talosconfig saved to ~/.talos/config"
-
-  talos-verify:
-    desc: Verify Talos cluster is healthy
-    dir: terraform/env-3-kubernetes
-    cmds:
-      - |
-        NODE_IPS=$(tofu output -json node_ips | jq -r 'to_entries | map(.value) | join(",")')
-        echo "Checking Talos nodes: $NODE_IPS"
-        talosctl health --nodes "$NODE_IPS" || true
-        echo ""
-        echo "Checking Kubernetes cluster..."
-        kubectl --kubeconfig ~/.kube/config-homelab get nodes || true
-        kubectl --kubeconfig ~/.kube/config-homelab get pods -A || true
-
-  talos-destroy:
-    desc: Destroy Talos Kubernetes cluster
-    deps: [env-verify]
-    dir: terraform/env-3-kubernetes
-    cmds:
-      - |
-        tofu destroy -auto-approve -refresh=false \
-          -var="cluster_name={{.TALOS_CLUSTER_NAME}}" \
-          -var="talos_version={{.TALOS_VERSION}}" \
-          -var="node_count={{.TALOS_NODE_COUNT}}" \
-          -var="gateway={{.TALOS_GATEWAY}}" \
-          -var="ip_base={{.TALOS_IP_BASE}}" \
-          -var="node_cores={{.TALOS_NODE_CORES}}" \
-          -var="node_memory={{.TALOS_NODE_MEMORY}}" \
-          -var="node_disk={{.TALOS_NODE_DISK}}" \
-          -var="default_storage={{.DISK_STORAGE}}"
-
-  talos-secrets-backup:
-    desc: Backup Talos machine secrets to 1Password
-    dir: terraform/env-3-kubernetes
-    cmds:
-      - |
-        echo "Backing up Talos machine secrets to 1Password..."
-        SECRETS=$(tofu output -raw machine_secrets)
-        if op item get "Talos Machine Secrets" --vault="Homelab" >/dev/null 2>&1; then
-          echo "$SECRETS" | op item edit "Talos Machine Secrets" --vault="Homelab" notesPlain=-
-          echo "✓ Updated existing secrets in 1Password"
-        else
-          echo "$SECRETS" | op item create --category="Secure Note" --title="Talos Machine Secrets" --vault="Homelab" notesPlain=-
-          echo "✓ Created new secrets in 1Password"
-        fi
