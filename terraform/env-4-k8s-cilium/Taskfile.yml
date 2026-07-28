@@ -21,6 +21,7 @@ version: '3'
 # Day-2 Cilium CLI ops (against the module-managed install):
 #   cilium:status              cilium status --wait
 #   cilium:connectivity-test   full e2e connectivity suite (slow)
+#   cilium:hubble-enable       enable Hubble flow observability + UI
 #   cilium:hubble-status       Hubble flow-observability status
 #   cilium:hubble-ui           port-forward + open the Hubble UI
 
@@ -121,6 +122,18 @@ tasks:
       KUBECONFIG: '{{.KUBECONFIG_PATH}}'
     cmds:
       - cilium connectivity test
+
+  hubble-enable:
+    # Enables hubble.relay (+ UI) on the running Cilium install. This mutates
+    # the module-owned Helm release, so it is reverted if the cluster is
+    # rebuilt (tofu apply); for a durable setting, enable Hubble via the
+    # module's `cilium_values` in main.tf instead.
+    desc: Enable Hubble flow observability + UI on the Cilium install
+    env:
+      KUBECONFIG: '{{.KUBECONFIG_PATH}}'
+    cmds:
+      - cilium hubble enable --ui
+      - cilium status --wait
 
   hubble-status:
     desc: Show Hubble status (flow observability layer)

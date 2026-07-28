@@ -49,6 +49,9 @@ Env-4-k8s-cilium:
 * Extend Taskfile with Cilium Checks and UI install?
 * Minor: Nodes keep DHCP adresses too long? (see also QEMU agent status in Proxmox UI)
 * Minor: REname cluster to "talos"
+* Move nix-shell into each environment (as KUBECONFIG is different) 
+* Minor? cilium connectivity test, here's the result: 73/76 tests passed, 3 failed, 56 skipped. Crucially, all 3 failures are the pod-to-pod-encryption test — and they didn't fail on connectivity/policy, they failed in the test's tcpdump verification helper
+* Minor: Change node names from "cluster>--wk-default-ebb8c25 to "Cluster-wk-01".
 
 
 Very Minor:
