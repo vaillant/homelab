@@ -17,7 +17,12 @@ locals {
   cluster_name       = "homelab"
   talos_cp_version   = "1.13.7" # no 'v' prefix; module (master) needs Talos >= 1.12 for the HostnameConfig doc
   kubernetes_version = "1.33.0"
-  talos_schematic    = ["siderolabs/qemu-guest-agent"]
+  # iscsi-tools + util-linux-tools are required by Longhorn on Talos.
+  talos_schematic = [
+    "siderolabs/qemu-guest-agent",
+    "siderolabs/iscsi-tools",
+    "siderolabs/util-linux-tools",
+  ]
 
   # Proxmox placement
   proxmox_cluster_name = "homelab"
@@ -50,6 +55,33 @@ locals {
     network = "0.0.0.0/0"
     gateway = local.default_gateway
   }]
+
+  # Dedicated per-node data disk for Longhorn (local-zfs backed), surfaced in
+  # the guest as /dev/vdb (virtio1).
+  data_disk_size = 100
+
+  # Talos machine-config patches (via the forked module's machine_config_patches
+  # escape hatch): format the data disk and mount it at Longhorn's data path,
+  # and bind-mount that path into the kubelet mount namespace with rshared
+  # propagation (both required by Longhorn on Talos).
+  machine_config_patches = [
+    yamlencode({
+      machine = {
+        disks = [{
+          device     = "/dev/vdb"
+          partitions = [{ mountpoint = "/var/lib/longhorn" }]
+        }]
+        kubelet = {
+          extraMounts = [{
+            destination = "/var/lib/longhorn"
+            type        = "bind"
+            source      = "/var/lib/longhorn"
+            options     = ["bind", "rshared", "rw"]
+          }]
+        }
+      }
+    })
+  ]
 
   # ---- Derived topology ---------------------------------------------------
   # Static IPs require count = 1 per group: the module copies a group's
@@ -94,9 +126,9 @@ locals {
 }
 
 module "talos_cluster" {
-  # Tip: pin to a release tag for reproducibility, e.g.
-  #   source = "github.com/alexmorbo/terraform-proxmox-talos?ref=vX.Y.Z"
-  source = "github.com/alexmorbo/terraform-proxmox-talos"
+  # Fork of alexmorbo/terraform-proxmox-talos that adds `machine_config_patches`
+  # + `data_disk_size` (branch machine-config-patches).
+  source = "github.com/vaillant/terraform-proxmox-talos-module?ref=machine-config-patches"
 
   cluster_name       = local.cluster_name
   talos_cp_version   = local.talos_cp_version
@@ -123,6 +155,9 @@ module "talos_cluster" {
   controlplanes = local.controlplanes
   workers       = local.workers
   static_routes = local.static_routes
+
+  data_disk_size         = local.data_disk_size
+  machine_config_patches = local.machine_config_patches
 
   # Cilium is installed by the module with sensible defaults
   # (kube-proxy replacement, Hubble). Override via `cilium_values` if needed.

@@ -10,6 +10,7 @@ version: '3'
 #   production:*  terraform/env-2-production/Taskfile.yml  (Phase 3 & 4)
 #   talos:*       terraform/env-3-kubernetes/Taskfile.yml  (Phase 5)
 #   cilium:*      terraform/env-4-k8s-cilium/Taskfile.yml  (Phase 6)
+#   apps:*        terraform/env-5-apps/Taskfile.yml        (Phase 7: in-cluster apps)
 #
 # Run `task` (or `task --list-all`) to see everything.
 
@@ -58,6 +59,9 @@ includes:
   cilium:
     taskfile: ./terraform/env-4-k8s-cilium/Taskfile.yml
     dir: ./terraform/env-4-k8s-cilium
+  apps:
+    taskfile: ./terraform/env-5-apps/Taskfile.yml
+    dir: ./terraform/env-5-apps
 
 tasks:
   default:

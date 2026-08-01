@@ -1,0 +1,57 @@
+version: '3'
+
+# In-cluster applications for the env-4 Talos+Cilium cluster (Longhorn, ...),
+# deployed with the helm + kubernetes Terraform providers.
+#
+# Included by the root Taskfile with `dir` set to this folder. Unlike the other
+# envs these tasks do NOT need Proxmox credentials — only the cluster kubeconfig
+# written by `task cilium:kubeconfig` (default ~/.kube/config-cilium).
+
+vars:
+  KUBECONFIG_PATH: '{{.KUBECONFIG_PATH | default "${HOME}/.kube/config-cilium"}}'
+
+tasks:
+  init:
+    desc: Initialize the apps environment
+    cmds:
+      - tofu init
+
+  plan:
+    desc: Plan in-cluster app changes (Longhorn, ...)
+    cmds:
+      - tofu plan
+
+  apply:
+    desc: Apply in-cluster apps (installs/updates Longhorn)
+    cmds:
+      - tofu apply -auto-approve
+
+  output:
+    desc: Show outputs
+    cmds:
+      - tofu output
+
+  verify:
+    desc: Verify Longhorn is healthy
+    cmds:
+      - |
+        KC="kubectl --kubeconfig {{.KUBECONFIG_PATH}}"
+        echo "Longhorn pods:"
+        $KC -n longhorn-system get pods -o wide || true
+        echo ""
+        echo "StorageClasses:"
+        $KC get storageclass || true
+        echo ""
+        echo "Longhorn nodes (disk schedulable):"
+        $KC -n longhorn-system get nodes.longhorn.io -o wide 2>/dev/null || true
+
+  longhorn-ui:
+    desc: Port-forward the Longhorn UI to http://localhost:8080 (Ctrl-C to stop)
+    cmds:
+      - echo "Longhorn UI -> http://localhost:8080"
+      - kubectl --kubeconfig {{.KUBECONFIG_PATH}} -n longhorn-system port-forward svc/longhorn-frontend 8080:80
+
+  destroy:
+    desc: Uninstall the in-cluster apps
+    cmds:
+      - tofu destroy -auto-approve
