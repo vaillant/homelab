@@ -59,7 +59,7 @@ resource "proxmox_virtual_environment_vm" "nix_builder" {
   description = "NixOS remote builder"
 
   # Use UEFI boot
-  bios = "ovmf"
+  bios    = "ovmf"
   machine = "q35"
 
   # EFI disk for UEFI boot

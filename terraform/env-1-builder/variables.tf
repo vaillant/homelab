@@ -62,3 +62,18 @@ variable "ssh_pubkey" {
   description = "SSH public key for cloud-init"
   type        = string
 }
+
+# NixOS VM template (Phase 2, VM variant). Set by the `vm-build` task after it
+# uploads the freshly built qcow2 to Proxmox. When empty, the template resource
+# is not created, so `builder:apply` keeps working before any VM image exists.
+variable "vm_image_file" {
+  description = "Proxmox volume ID of the imported NixOS VM qcow2 (e.g. 'local:import/nixos-vm-....qcow2'). Empty disables the template."
+  type        = string
+  default     = ""
+}
+
+variable "nixos_template_id" {
+  description = "VM ID to assign the NixOS template (env-2-production clones this ID)"
+  type        = number
+  default     = 9000
+}

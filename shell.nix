@@ -14,6 +14,12 @@ pkgs.mkShell {
     talosctl        # Talos Linux CLI
     cilium-cli      # Cilium CLI
     hubble          # Hubble CLI (Cilium flow observability)
+    k9s
+
+    # NixOS deployment: orchestrates Phase 4 `nixos-rebuild switch` from the
+    # Mac (evaluates the flake, delegates the x86_64 build to nix-builder via
+    # --build-host, copies the closure to the target).
+    nixos-rebuild
 
     # Optional but useful tools
     curl            # HTTP client

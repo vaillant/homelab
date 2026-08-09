@@ -28,6 +28,12 @@ variable "nixos_template_id" {
   default     = 9000
 }
 
+variable "nixos_template_node" {
+  description = "Node where the NixOS template (nixos_template_id) lives. Used for cross-node clones."
+  type        = string
+  default     = "proxmox1"
+}
+
 variable "nixos_vms" {
   description = "Map of NixOS VMs to create"
   type = map(object({

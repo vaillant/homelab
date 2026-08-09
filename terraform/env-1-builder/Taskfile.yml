@@ -96,3 +96,71 @@ tasks:
       - echo "✓ Build and upload complete"
       - echo ""
       - echo "Run 'task production:apply' to recreate containers with new image"
+
+  #
+  # Phase 2 (VM variant): Build NixOS VM image and create the cloud-init template
+  #
+
+  vm-build:
+    desc: Build NixOS VM image (qcow2) on nix-builder, import to Proxmox, and create/update the cloud-init template
+    deps: [':env-verify', ':secrets-init']
+    vars:
+      # Versioned qcow2 filename with timestamp
+      VM_IMAGE_NAME: 'nixos-vm-{{now | date "20060102-150405"}}.qcow2'
+    cmds:
+      - echo "Building NixOS VM image on {{.BUILDER_HOST}}..."
+      # Copy nix/ directory to builder (excluding result symlinks)
+      - rsync -avz --delete --exclude='result' --exclude='result-*' ../../nix/ root@{{.BUILDER_HOST}}:/tmp/homelab-nix/
+      # Build the qcow2 (qcow-efi format) on the remote x86_64 builder
+      - ssh root@{{.BUILDER_HOST}} "cd /tmp/homelab-nix && nix build .#proxmox-vm-base --out-link result"
+      # Upload directly from builder to Proxmox as an importable disk image
+      - echo "Uploading {{.VM_IMAGE_NAME}} to Proxmox {{.NODE}} ({{.IMAGE_STORAGE}}:import)..."
+      - |
+        ssh root@{{.BUILDER_HOST}} "
+          IMG=\$(ls /tmp/homelab-nix/result/*.qcow2)
+          # Symlink with versioned name for upload
+          ln -sf \$IMG /tmp/{{.VM_IMAGE_NAME}}
+          echo \"Uploading as {{.VM_IMAGE_NAME}}...\"
+          curl -s -k -f \
+            -H \"Authorization: PVEAPIToken=$PROXMOX_VE_API_TOKEN\" \
+            -H 'Content-Type: multipart/form-data' \
+            -F 'content=import' \
+            -F 'filename=@/tmp/{{.VM_IMAGE_NAME}}' \
+            \"${PROXMOX_VE_ENDPOINT}/api2/json/nodes/{{.NODE}}/storage/{{.IMAGE_STORAGE}}/upload\" \
+            | jq -r '\"✓ Uploaded: \(.data)\"' \
+            || (echo '✗ Upload failed. Ensure the \"{{.IMAGE_STORAGE}}\" storage has the Import content type enabled (Datacenter > Storage > {{.IMAGE_STORAGE}} > Content, or: pvesm set {{.IMAGE_STORAGE}} --content <existing>,import)' && exit 1)
+          rm /tmp/{{.VM_IMAGE_NAME}}
+        "
+      # Record the imported volume so the template resource picks it up
+      - |
+        echo "vm_image_file = \"{{.IMAGE_STORAGE}}:import/{{.VM_IMAGE_NAME}}\"" \
+          > vm-image.auto.tfvars
+        echo "✓ Updated terraform/env-1-builder/vm-image.auto.tfvars"
+      # Cleanup builder
+      - ssh root@{{.BUILDER_HOST}} "rm -rf /tmp/homelab-nix"
+      # Create/replace the template VM (id 9000 by default) from the imported disk
+      - echo "Creating/updating NixOS VM template (VM 9000)..."
+      - |
+        tofu apply -auto-approve \
+          -var="target_node={{.NODE}}" \
+          -var="storage={{.IMAGE_STORAGE}}" \
+          -var="disk_storage={{.DISK_STORAGE}}" \
+          -var="nixos_version={{.NIXOS_VERSION}}" \
+          -var="ssh_pubkey={{.SSH_PUBKEY}}"
+      - echo "✓ NixOS VM template ready"
+      - echo ""
+      - echo "Add a VM to nixos_vms in env-2-production and run 'task production:apply' to clone it"
+
+  vm-verify:
+    desc: Verify the NixOS VM template exists on Proxmox
+    deps: [':env-verify']
+    silent: true
+    cmds:
+      - echo "Checking for NixOS template (VM 9000) on {{.NODE}}..."
+      - |
+        curl -s -k -f \
+          -H "Authorization: PVEAPIToken=$PROXMOX_VE_API_TOKEN" \
+          "${PROXMOX_VE_ENDPOINT}/api2/json/nodes/{{.NODE}}/qemu/9000/config" \
+          | jq -e '.data.template == 1' >/dev/null \
+          && echo "✓ NixOS template (VM 9000) present and marked as template" \
+          || (echo "✗ NixOS template (VM 9000) not found — run 'task builder:vm-build'" && exit 1)

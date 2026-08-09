@@ -19,6 +19,12 @@ variable "template_id" {
   type        = number
 }
 
+variable "template_node" {
+  description = "Node where the template lives. Set only for cross-node clones (empty = clone on the target node)."
+  type        = string
+  default     = ""
+}
+
 variable "cores" {
   description = "Number of CPU cores"
   type        = number
@@ -88,9 +94,9 @@ variable "disks" {
 }
 
 variable "ipconfig0" {
-  description = "IP configuration (e.g., 'ip=10.0.0.100/24,gw=10.0.0.1' or 'ip=dhcp')"
+  description = "cloud-init IPv4 for the bpg ipv4.address field: 'dhcp' or a CIDR like '10.0.0.100/24'"
   type        = string
-  default     = "ip=dhcp"
+  default     = "dhcp"
 }
 
 variable "ci_user" {
@@ -110,4 +116,10 @@ variable "ssh_keys" {
   description = "SSH public keys for cloud-init (newline separated)"
   type        = string
   default     = ""
+}
+
+variable "ci_datastore_id" {
+  description = "Datastore for the generated cloud-init drive"
+  type        = string
+  default     = "local-zfs"
 }

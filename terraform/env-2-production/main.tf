@@ -6,40 +6,46 @@ module "nixos_vms" {
   source   = "../modules/nixos-vm"
   for_each = var.nixos_vms
 
+  # Note: coalesce/ternary (not lookup defaults) because optional object
+  # attributes are present-but-null when omitted, so lookup never falls back.
   vm_name     = each.key
   target_node = each.value.target_node
-  description = lookup(each.value, "description", "NixOS VM managed by Terraform")
+  description = coalesce(each.value.description, "NixOS VM managed by Terraform")
   template_id = var.nixos_template_id
 
+  # Cross-node clone when the VM's node differs from the template's node.
+  template_node = each.value.target_node != var.nixos_template_node ? var.nixos_template_node : ""
+
   # Resources
-  cores   = lookup(each.value, "cores", 2)
-  sockets = lookup(each.value, "sockets", 1)
-  memory  = lookup(each.value, "memory", 2048)
-  balloon = lookup(each.value, "balloon", 1024)
+  cores   = coalesce(each.value.cores, 2)
+  sockets = coalesce(each.value.sockets, 1)
+  memory  = coalesce(each.value.memory, 2048)
+  balloon = coalesce(each.value.balloon, 1024)
 
   # Boot settings
-  onboot  = lookup(each.value, "onboot", true)
-  startup = lookup(each.value, "startup", "")
+  onboot  = coalesce(each.value.onboot, true)
+  startup = each.value.startup != null ? each.value.startup : ""
 
   # Network
-  networks = lookup(each.value, "networks", [{
+  networks = each.value.networks != null ? each.value.networks : [{
     model  = "virtio"
     bridge = var.default_bridge
-  }])
+  }]
 
   # Disks
-  disks = lookup(each.value, "disks", [{
+  disks = each.value.disks != null ? each.value.disks : [{
     type    = "scsi"
     storage = var.default_storage
     size    = "32G"
     ssd     = 1
     discard = "on"
-  }])
+  }]
 
   # Cloud-init
-  ipconfig0 = lookup(each.value, "ipconfig0", "ip=dhcp")
-  ci_user   = lookup(each.value, "ci_user", "nixos")
-  ssh_keys  = var.ssh_public_keys
+  ipconfig0       = coalesce(each.value.ipconfig0, "dhcp")
+  ci_user         = coalesce(each.value.ci_user, "root")
+  ci_datastore_id = var.default_storage
+  ssh_keys        = var.ssh_public_keys
 }
 
 # LXC containers

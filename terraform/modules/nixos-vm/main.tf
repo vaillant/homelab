@@ -11,9 +11,12 @@ resource "proxmox_virtual_environment_vm" "nixos_vm" {
   node_name   = var.target_node
   description = var.description
 
-  # Clone from NixOS template
+  # Clone from NixOS template. When the template lives on a different node,
+  # set template_node so bpg performs a cross-node (full) clone.
   clone {
-    vm_id = var.template_id
+    vm_id     = var.template_id
+    node_name = var.template_node != "" ? var.template_node : null
+    full      = var.template_node != "" ? true : null
   }
 
   # CPU
@@ -39,7 +42,7 @@ resource "proxmox_virtual_environment_vm" "nixos_vm" {
 
   # Operating system
   operating_system {
-    type = "l26"  # Linux kernel 2.6+
+    type = "l26" # Linux kernel 2.6+
   }
 
   # Network
@@ -67,6 +70,9 @@ resource "proxmox_virtual_environment_vm" "nixos_vm" {
 
   # Cloud-init configuration
   initialization {
+    # Where Proxmox stores the generated cloud-init (cidata) drive.
+    datastore_id = var.ci_datastore_id
+
     ip_config {
       ipv4 {
         address = var.ipconfig0

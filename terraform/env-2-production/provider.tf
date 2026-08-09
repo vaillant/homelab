@@ -19,5 +19,5 @@ provider "proxmox" {
   # PROXMOX_VE_USERNAME  - Username (e.g., "root@pam")
   # PROXMOX_VE_PASSWORD  - Password
 
-  insecure = true  # Set to false if using valid SSL certificates
+  insecure = true # Set to false if using valid SSL certificates
 }

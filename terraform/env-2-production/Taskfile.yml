@@ -18,13 +18,13 @@ tasks:
     desc: Plan production changes
     deps: [':env-verify']
     cmds:
-      - tofu plan -var="default_storage={{.DISK_STORAGE}}"
+      - tofu plan -var="default_storage={{.DISK_STORAGE}}" -var="ssh_public_keys={{.SSH_PUBKEY}}"
 
   apply:
     desc: Apply production changes
     deps: [':env-verify']
     cmds:
-      - tofu apply -auto-approve -var="default_storage={{.DISK_STORAGE}}"
+      - tofu apply -auto-approve -var="default_storage={{.DISK_STORAGE}}" -var="ssh_public_keys={{.SSH_PUBKEY}}"
 
   output:
     desc: Show production outputs
@@ -108,3 +108,28 @@ tasks:
       - task: deploy-cloudflared
       - task: deploy-pulse
       - task: deploy-bose-soundtouch
+
+  #
+  # Phase 4: Deploy NixOS VM configurations
+  #
+
+  deploy-claude-dev:
+    desc: Deploy Claude Code CLI config to claude-dev (override target with HOST=<ip> for the first deploy before DNS exists)
+    vars:
+      HOST: '{{.HOST | default (printf "claude-dev.%s" .DNS_SUFFIX)}}'
+    cmds:
+      - echo "Deploying claude-dev to {{.HOST}} (building on {{.BUILDER_HOST}})..."
+      - nixos-rebuild switch --flake ../../nix#claude-dev --build-host root@{{.BUILDER_HOST}} --target-host root@{{.HOST}} --use-remote-sudo
+
+  verify-claude-dev:
+    desc: Verify the Claude Code CLI is installed and runnable on claude-dev (override with HOST=<ip>)
+    silent: true
+    vars:
+      HOST: '{{.HOST | default (printf "claude-dev.%s" .DNS_SUFFIX)}}'
+    cmds:
+      - echo "Checking claude on {{.HOST}}..."
+      - |
+        ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no \
+          root@{{.HOST}} "claude --version" \
+          && echo "✓ Claude Code CLI is installed" \
+          || (echo "✗ claude not found — run 'task production:deploy-claude-dev'" && exit 1)
