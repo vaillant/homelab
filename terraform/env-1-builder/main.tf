@@ -13,6 +13,12 @@ resource "proxmox_virtual_environment_file" "cloud_init" {
       hostname: nix-builder
       fqdn: nix-builder
       manage_etc_hosts: true
+      # 4 GiB swapfile so anonymous memory can page out (e.g. when the balloon
+      # reclaims RAM under host pressure) instead of triggering the OOM killer.
+      swap:
+        filename: /swapfile
+        size: 4294967296
+        maxsize: 4294967296
       users:
         - name: root
           lock_passwd: false
@@ -79,9 +85,11 @@ resource "proxmox_virtual_environment_vm" "nix_builder" {
     type    = "host"
   }
 
-  # Memory
+  # Memory. floating enables the virtio-balloon device so Proxmox can reclaim
+  # unused guest RAM (mostly page cache) down to this floor under host pressure.
   memory {
     dedicated = var.memory
+    floating  = 2048
   }
 
   # Enable QEMU guest agent
