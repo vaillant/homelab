@@ -100,9 +100,9 @@ variable "ipconfig0" {
 }
 
 variable "ci_user" {
-  description = "Cloud-init username"
+  description = "Cloud-init username. Empty = no cloud-init user (NixOS VMs create the user declaratively)."
   type        = string
-  default     = "nixos"
+  default     = ""
 }
 
 variable "ci_password" {

@@ -63,6 +63,19 @@ variable "ssh_pubkey" {
   type        = string
 }
 
+variable "username" {
+  description = "Normal-user account to create on the builder"
+  type        = string
+  default     = "vaillant"
+}
+
+variable "user_password_hash" {
+  description = "SHA-512 crypt hash for the normal user's password (from 1Password)"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
 # NixOS VM template (Phase 2, VM variant). Set by the `vm-build` task after it
 # uploads the freshly built qcow2 to Proxmox. When empty, the template resource
 # is not created, so `builder:apply` keeps working before any VM image exists.

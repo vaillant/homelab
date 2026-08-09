@@ -24,9 +24,19 @@ env:
   # SSH private key for Proxmox disk operations
   PROXMOX_VE_SSH_PRIVATE_KEY:
     sh: op read "op://Homelab/Homelab SSH Key/private key"
+  # Normal-user account for VMs (picked up automatically by tofu as
+  # var.username / var.user_password_hash; env keeps the hash off the CLI).
+  # Store a SHA-512 crypt hash (mkpasswd -m sha-512) in 1Password. Tolerant so
+  # unrelated tasks still run before the item exists; required before applying
+  # the user changes.
+  TF_VAR_username: '{{.USERNAME}}'
+  TF_VAR_user_password_hash:
+    sh: op read "op://Homelab/VM User/password-hash" 2>/dev/null || echo ""
 
 vars:
   NODE: '{{.NODE | default "proxmox1"}}'
+  # Normal-user account created on the VMs (nix-builder + NixOS VMs)
+  USERNAME: '{{.USERNAME | default "vaillant"}}'
   DISK_STORAGE: '{{.DISK_STORAGE | default "local-zfs"}}'
   IMAGE_STORAGE: '{{.IMAGE_STORAGE | default "local"}}'
   BUILDER_HOST: '{{.BUILDER_HOST | default "nix-builder.svaillant.com"}}'
@@ -115,6 +125,11 @@ tasks:
       # Required: SSH public key for base image
       - op read "op://Homelab/Homelab SSH Key/public key" > nix/secrets/ssh-pubkey
       - echo "✓ ssh-pubkey"
+      # Required: normal-user name + password hash for the VM base image
+      - printf '%s' "{{.USERNAME}}" > nix/secrets/username
+      - echo "✓ username ({{.USERNAME}})"
+      - op read "op://Homelab/VM User/password-hash" > nix/secrets/user-password-hash
+      - echo "✓ user-password-hash"
       # Optional: Cloudflared tunnel token (skip if not configured yet)
       - op read "op://Homelab/Cloudflared/tunnel-token" > nix/secrets/cloudflared-token 2>/dev/null || echo "⚠ Cloudflared token not found (skipped)"
       # Optional: Pulse Proxmox credentials

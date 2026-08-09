@@ -79,10 +79,15 @@ resource "proxmox_virtual_environment_vm" "nixos_vm" {
       }
     }
 
-    user_account {
-      username = var.ci_user
-      password = var.ci_password
-      keys     = var.ssh_keys != "" ? split("\n", var.ssh_keys) : []
+    # Only emit a cloud-init user when ci_user is set. NixOS VMs create their
+    # admin user declaratively (see nix/vm/base.nix), so they leave this empty.
+    dynamic "user_account" {
+      for_each = var.ci_user != "" ? [1] : []
+      content {
+        username = var.ci_user
+        password = var.ci_password
+        keys     = var.ssh_keys != "" ? split("\n", var.ssh_keys) : []
+      }
     }
   }
 

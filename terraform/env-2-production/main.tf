@@ -41,9 +41,11 @@ module "nixos_vms" {
     discard = "on"
   }]
 
-  # Cloud-init
+  # Cloud-init handles only networking here; the admin user is created
+  # declaratively in nix/vm/base.nix (cloud-init can't grant sudo on NixOS),
+  # so no cloud-init user_account is emitted (ci_user left empty).
   ipconfig0       = coalesce(each.value.ipconfig0, "dhcp")
-  ci_user         = coalesce(each.value.ci_user, "root")
+  ci_user         = each.value.ci_user != null ? each.value.ci_user : ""
   ci_datastore_id = var.default_storage
   ssh_keys        = var.ssh_public_keys
 }

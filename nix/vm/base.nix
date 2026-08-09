@@ -51,12 +51,25 @@
   # (Matches `agent { enabled = true }` in the VM module.)
   services.qemuGuest.enable = true;
 
-  # SSH. The public key is injected by cloud-init into root's authorized_keys
-  # (Proxmox `user_account.username = "root"`), mirroring the LXC SSH model.
   services.openssh = {
     enable = true;
     settings.PermitRootLogin = "prohibit-password";
   };
+
+  # Declarative admin user. cloud-init can't grant sudo on NixOS (it lands the
+  # user in "users", not "wheel", and NixOS ignores /etc/sudoers.d drop-ins),
+  # so the user is defined here instead. Name, password hash and SSH key come
+  # from nix/secrets/ (populated by `task secrets-init` from the Taskfile
+  # USERNAME var + 1Password). Baked into the image, so every clone has it.
+  users.users.${lib.strings.trim (builtins.readFile ../secrets/username)} = {
+    isNormalUser = true;
+    extraGroups = [ "wheel" ];
+    hashedPassword = lib.strings.trim (builtins.readFile ../secrets/user-password-hash);
+    openssh.authorizedKeys.keys = [
+      (lib.strings.trim (builtins.readFile ../secrets/ssh-pubkey))
+    ];
+  };
+  security.sudo.wheelNeedsPassword = false; # passwordless sudo for wheel
 
   # Allow ping (ICMP)
   networking.firewall.allowPing = true;

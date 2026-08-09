@@ -29,6 +29,14 @@ resource "proxmox_virtual_environment_file" "cloud_init" {
           shell: /bin/bash
           ssh_authorized_keys:
             - ${var.ssh_pubkey}
+        - name: ${var.username}
+          groups: sudo
+          sudo: ALL=(ALL) NOPASSWD:ALL
+          shell: /bin/bash
+          lock_passwd: false
+          passwd: ${var.user_password_hash}
+          ssh_authorized_keys:
+            - ${var.ssh_pubkey}
       ssh_pwauth: false
       package_update: true
       packages:
