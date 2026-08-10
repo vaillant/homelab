@@ -1,6 +1,12 @@
 # Homelab Infrastructure as Code
 
-Terraform/OpenTofu configuration for managing a Proxmox VE cluster with NixOS VMs and LXC containers.
+Terraform/OpenTofu for Proxmox for managing 
+* NixOS VMs and LXC containers.
+* Talos Kubernetes Cluster.
+
+## Under Construction
+
+🚧 Currently under development, use with care!
 
 ## Features
 
