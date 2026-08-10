@@ -19,10 +19,14 @@ resource "proxmox_virtual_environment_vm" "nixos_vm" {
     full      = var.template_node != "" ? true : null
   }
 
-  # CPU
+  # CPU. Default to "host" so the guest gets the host's full instruction set
+  # (SSE4.2/AVX/...). The bpg default (kvm64 / "QEMU Virtual CPU") lacks these,
+  # which makes modern bundled JS/WASM tools (e.g. claude-code) busy-loop at
+  # 100% CPU on startup.
   cpu {
     cores   = var.cores
     sockets = var.sockets
+    type    = var.cpu_type
   }
 
   # Memory

@@ -119,7 +119,17 @@ tasks:
       HOST: '{{.HOST | default (printf "claude-dev.%s" .DNS_SUFFIX)}}'
     cmds:
       - echo "Deploying claude-dev to {{.USERNAME}}@{{.HOST}} (building on {{.BUILDER_HOST}})..."
-      - nixos-rebuild switch --flake ../../nix#claude-dev --build-host root@{{.BUILDER_HOST}} --target-host {{.USERNAME}}@{{.HOST}} --use-remote-sudo
+      - |
+        # Secrets are gitignored, but `nixos-rebuild --flake` only evaluates
+        # git-tracked files, so stage them for this eval (never committed).
+        SECRETS="nix/secrets/ssh-pubkey nix/secrets/username nix/secrets/user-password-hash"
+        git -C ../.. add -f $SECRETS
+        trap 'git -C ../.. reset -q HEAD $SECRETS' EXIT
+        # NIX_SSHOPTS: target host isn't in ssh_config, so skip host-key checks.
+        NIX_SSHOPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null" \
+          nixos-rebuild switch --flake ../../nix#claude-dev \
+            --build-host root@{{.BUILDER_HOST}} \
+            --target-host {{.USERNAME}}@{{.HOST}} --use-remote-sudo
 
   verify-claude-dev:
     desc: Verify the Claude Code CLI is installed and runnable on claude-dev (override with HOST=<ip>)

@@ -74,7 +74,13 @@
   # Allow ping (ICMP)
   networking.firewall.allowPing = true;
 
-  nix.settings.experimental-features = [ "nix-command" "flakes" ];
+  nix.settings = {
+    experimental-features = [ "nix-command" "flakes" ];
+    # Let wheel members (the deploy user) push unsigned closures to the store,
+    # so `nixos-rebuild --target-host <user>@ --use-remote-sudo` can copy the
+    # locally-built system without signature errors.
+    trusted-users = [ "root" "@wheel" ];
+  };
 
   # Pre-baked packages, same set as the LXC base for consistency.
   environment.systemPackages = with pkgs; [

@@ -37,6 +37,12 @@ variable "sockets" {
   default     = 1
 }
 
+variable "cpu_type" {
+  description = "QEMU CPU model. 'host' passes through the host's instruction set (needed by modern JS/WASM tooling)."
+  type        = string
+  default     = "host"
+}
+
 variable "memory" {
   description = "Memory in MB"
   type        = number
