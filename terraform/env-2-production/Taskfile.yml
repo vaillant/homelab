@@ -23,6 +23,15 @@ tasks:
   apply:
     desc: Apply production changes
     deps: [':env-verify']
+    # svc-jellyfin uses LXC device passthrough (/dev/dri for VAAPI), which
+    # Proxmox permits only for root@pam — API tokens get HTTP 403. Override auth
+    # to root@pam for apply only (blank the token so the provider doesn't prefer
+    # it). Other envs keep using the token. Password comes from 1Password.
+    env:
+      PROXMOX_VE_API_TOKEN: ""
+      PROXMOX_VE_USERNAME: "root@pam"
+      PROXMOX_VE_PASSWORD:
+        sh: op read "op://Homelab/Proxmox Login/password"
     cmds:
       - tofu apply -auto-approve -var="default_storage={{.DISK_STORAGE}}" -var="ssh_public_keys={{.SSH_PUBKEY}}"
 
@@ -103,18 +112,32 @@ tasks:
       - nixos-rebuild switch --target-host root@svc-bose-soundtouch.{{.DNS_SUFFIX}} --flake ../../nix#bose-soundtouch --use-remote-sudo
 
   deploy-jellyfin:
-    desc: Deploy jellyfin configuration
+    desc: Deploy jellyfin configuration (override target with HOST=<ip> before DNS exists)
+    vars:
+      HOST: '{{.HOST | default (printf "svc-jellyfin.%s" .DNS_SUFFIX)}}'
     cmds:
-      - echo "Deploying jellyfin to svc-jellyfin.{{.DNS_SUFFIX}}..."
-      - nixos-rebuild switch --target-host root@svc-jellyfin.{{.DNS_SUFFIX}} --flake ../../nix#jellyfin --use-remote-sudo
+      - echo "Deploying jellyfin to root@{{.HOST}} (building on {{.BUILDER_HOST}})..."
+      - |
+        # base.nix reads nix/secrets/ssh-pubkey, but `nixos-rebuild --flake` only
+        # evaluates git-tracked files, so stage it for this eval (never committed).
+        SECRETS="nix/secrets/ssh-pubkey"
+        git -C ../.. add -f $SECRETS
+        trap 'git -C ../.. reset -q HEAD $SECRETS' EXIT
+        # NIX_SSHOPTS: fresh container isn't in ssh_config, so skip host-key checks.
+        NIX_SSHOPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null" \
+          nixos-rebuild switch --flake ../../nix#jellyfin \
+            --build-host root@{{.BUILDER_HOST}} \
+            --target-host root@{{.HOST}} --use-remote-sudo
 
   verify-jellyfin:
-    desc: Verify Jellyfin web UI responds and the AMD render node is present
+    desc: Verify Jellyfin web UI responds and the AMD render node is present (override with HOST=<ip>)
     silent: true
+    vars:
+      HOST: '{{.HOST | default (printf "svc-jellyfin.%s" .DNS_SUFFIX)}}'
     cmds:
-      - echo "Checking jellyfin on svc-jellyfin.{{.DNS_SUFFIX}}..."
+      - echo "Checking jellyfin on {{.HOST}}..."
       - |
-        FQDN="svc-jellyfin.{{.DNS_SUFFIX}}"
+        FQDN="{{.HOST}}"
         # Web UI: public system info should return JSON without auth.
         if curl -fsS "http://${FQDN}:8096/System/Info/Public" | grep -q '"Version"'; then
           echo "✓ Jellyfin web UI responding on :8096"
@@ -124,9 +147,11 @@ tasks:
         # GPU: render node present and VAAPI profiles enumerable inside the container.
         if ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no "root@${FQDN}" "ls /dev/dri/renderD128" >/dev/null 2>&1; then
           echo "✓ /dev/dri/renderD128 present in container"
-          ssh -o StrictHostKeyChecking=no "root@${FQDN}" "vainfo 2>/dev/null | grep -E 'VAProfile(H264|HEVC|AV1)' | head -5" \
-            && echo "✓ VAAPI profiles available" \
-            || echo "⚠ vainfo returned no VAAPI profiles — check driver/permissions"
+          if ssh -o StrictHostKeyChecking=no "root@${FQDN}" "LIBVA_DRIVERS_PATH=/run/opengl-driver/lib/dri LIBVA_DRIVER_NAME=radeonsi vainfo 2>/dev/null | grep -qE 'VAProfile(H264|HEVC|AV1).*VAEntrypoint'"; then
+            echo "✓ VAAPI hardware profiles (H264/HEVC/AV1) available"
+          else
+            echo "⚠ vainfo returned no VAAPI profiles — check driver/permissions"
+          fi
         else
           echo "✗ /dev/dri/renderD128 missing — check device_passthrough / node has the iGPU"; exit 1
         fi

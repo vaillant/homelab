@@ -96,10 +96,13 @@ lxc_containers = {
         backup  = true
       }
     }
-    # Pass the AMD render node in for VAAPI. gid = host `render` group GID (993).
+    # Pass the AMD render node in for VAAPI. gid is the IN-CONTAINER group that
+    # will own the device node; use 303 = NixOS's default `render` group so the
+    # jellyfin user (a render member) can open it. (Host-side access is handled
+    # by the unprivileged passthrough + cgroup, independent of the host's gid.)
     device_passthrough = [{
       path = "/dev/dri/renderD128"
-      gid  = 993
+      gid  = 303
     }]
   }
 }
