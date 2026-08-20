@@ -34,20 +34,22 @@ TODO
 All other tools (OpenTofu, 1Password CLI, etc.) are provided by the Nix shell environment.
 
 ## TODOs
-
-* Currently root SSH access assumed. Change to normal use access.
 * Update Token Rights (see Proxmox Roles)
 * Check: Why is the private SSH Key required?
 * Add tags to created VM & LXC
 * Add more detailed notes for VM and LXC (git URL, admin URL, ...)
-* login password for Nix (and nix-builder)? I.e. how to use local PVE console
 
-Major Redesign:
-* Study existing terraform-talos-proxmox repos
-* Restructure to make independet usage of the phases easier: Top level Taskfile, Seperate Taskfile per part, terraform folder per part. 
-* Replace 1Password with SOPS: Install via nix-shell
-* Auto-detect and auto-generate requirements: Terraform token user, public key, network settings, cluster size, ... . Only requirement is: Proxmox SSH access.
-* For 1st usage, is there a tool to a) ask for values interactively b) detext certain values (network setting, public key)
+Major Redesign with current scope:
+* Replace 1Password with SOPS: Install via nix-shell:
+  * No need to authenticate manually, Claude auto mode possible
+  * Easier to use for non 1Password 
+  * Secret handling from Nix build is a apain. Assumption: Nix can direclty use SOPS, no intermediate secrets/ folder needed. 
+* Reorganize folders, simplify and prepare for seperate projects later: One folder proxmox-terraform-nixos and one proxmox-terraform-talos. Move nix/ into first, talos/ into 2nd. Merge terraform/env-1 and terraform/env-2 into proxmox-terraform-nixos. Check if top-level Taskfile still makes sense. 
+* Split nix.shell into different ones for K8S and Nix.
+
+
+
+
 
 Env-4-k8s-cilium:
 * Talos Console not shown in Proxmox VM's Console
@@ -60,7 +62,7 @@ Env-4-k8s-cilium:
 * Minor: Change node names from "cluster>--wk-default-ebb8c25 to "Cluster-wk-01".
 * Major: Can hubble be installed in Terraform already?
 
-Very Minor:
+Comment:
 * Ubiquiti Web UI does not show correct hostname, but e.g. "ubuntu" for nix-builder. IMHO a Ubiquiti bug.
 
 ## Quick Start
