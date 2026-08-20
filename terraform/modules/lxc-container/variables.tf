@@ -89,8 +89,22 @@ variable "mountpoints" {
     storage = string
     size    = string
     mp      = string
+    # Include this volume in vzdump/PBS backups. Bind mounts can never be backed
+    # up, so this only has effect on storage-allocated (managed) volumes.
+    backup = optional(bool, false)
   }))
   default = {}
+}
+
+variable "device_passthrough" {
+  description = "Host devices to pass into the container (e.g. /dev/dri/renderD128 for GPU transcode). Requires elevated Proxmox privileges (root@pam) rather than a limited API token."
+  type = list(object({
+    path = string
+    mode = optional(string, "0660")
+    gid  = optional(number)
+    uid  = optional(number)
+  }))
+  default = []
 }
 
 variable "ssh_keys" {

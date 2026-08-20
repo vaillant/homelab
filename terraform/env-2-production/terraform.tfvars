@@ -70,4 +70,36 @@ lxc_containers = {
       ip     = "dhcp"
     }]
   }
+
+  # Jellyfin media server with AMD RDNA3 (Phoenix2) VAAPI hardware transcode.
+  # NOTE: target_node must be a node with the AMD iGPU and /dev/dri/renderD128.
+  # Confirm with `ls -l /dev/dri` on the node before applying, and adjust below.
+  "svc-jellyfin" = {
+    target_node      = "proxmox1"
+    description      = "Jellyfin media server (AMD VAAPI HW transcode)"
+    cores            = 4
+    memory           = 4096
+    swap             = 2048
+    rootfs_size      = "16G"
+    features_nesting = true # Required for NixOS
+    networks = [{
+      name   = "eth0"
+      bridge = "vmbr0"
+      ip     = "dhcp"
+    }]
+    # Managed volume on ZFS so Proxmox Backup + pvesr replication cover the library.
+    mountpoints = {
+      media = {
+        storage = "local-zfs"
+        size    = "200G"
+        mp      = "/srv/media"
+        backup  = true
+      }
+    }
+    # Pass the AMD render node in for VAAPI. gid = host `render` group GID (993).
+    device_passthrough = [{
+      path = "/dev/dri/renderD128"
+      gid  = 993
+    }]
+  }
 }

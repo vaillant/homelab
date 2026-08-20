@@ -52,6 +52,11 @@
           modules = [ ./containers/bose-soundtouch.nix ];
         };
 
+        jellyfin = nixpkgs.lib.nixosSystem {
+          inherit system;
+          modules = [ ./containers/jellyfin.nix ];
+        };
+
         # Development VM for running the Claude Code CLI. Deployed onto a
         # clone of the VM template via `nixos-rebuild switch` (Phase 4).
         claude-dev = nixpkgs.lib.nixosSystem {

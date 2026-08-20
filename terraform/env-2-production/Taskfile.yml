@@ -102,12 +102,42 @@ tasks:
       - echo "Deploying bose-soundtouch to svc-bose-soundtouch.{{.DNS_SUFFIX}}..."
       - nixos-rebuild switch --target-host root@svc-bose-soundtouch.{{.DNS_SUFFIX}} --flake ../../nix#bose-soundtouch --use-remote-sudo
 
+  deploy-jellyfin:
+    desc: Deploy jellyfin configuration
+    cmds:
+      - echo "Deploying jellyfin to svc-jellyfin.{{.DNS_SUFFIX}}..."
+      - nixos-rebuild switch --target-host root@svc-jellyfin.{{.DNS_SUFFIX}} --flake ../../nix#jellyfin --use-remote-sudo
+
+  verify-jellyfin:
+    desc: Verify Jellyfin web UI responds and the AMD render node is present
+    silent: true
+    cmds:
+      - echo "Checking jellyfin on svc-jellyfin.{{.DNS_SUFFIX}}..."
+      - |
+        FQDN="svc-jellyfin.{{.DNS_SUFFIX}}"
+        # Web UI: public system info should return JSON without auth.
+        if curl -fsS "http://${FQDN}:8096/System/Info/Public" | grep -q '"Version"'; then
+          echo "✓ Jellyfin web UI responding on :8096"
+        else
+          echo "✗ Jellyfin web UI not responding — run 'task production:deploy-jellyfin'"; exit 1
+        fi
+        # GPU: render node present and VAAPI profiles enumerable inside the container.
+        if ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no "root@${FQDN}" "ls /dev/dri/renderD128" >/dev/null 2>&1; then
+          echo "✓ /dev/dri/renderD128 present in container"
+          ssh -o StrictHostKeyChecking=no "root@${FQDN}" "vainfo 2>/dev/null | grep -E 'VAProfile(H264|HEVC|AV1)' | head -5" \
+            && echo "✓ VAAPI profiles available" \
+            || echo "⚠ vainfo returned no VAAPI profiles — check driver/permissions"
+        else
+          echo "✗ /dev/dri/renderD128 missing — check device_passthrough / node has the iGPU"; exit 1
+        fi
+
   deploy-all:
     desc: Deploy all container configurations
     cmds:
       - task: deploy-cloudflared
       - task: deploy-pulse
       - task: deploy-bose-soundtouch
+      - task: deploy-jellyfin
 
   #
   # Phase 4: Deploy NixOS VM configurations
