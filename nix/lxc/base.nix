@@ -1,4 +1,4 @@
-{ modulesPath, lib, pkgs, ... }:
+{ modulesPath, lib, pkgs, config, ... }:
 
 {
   imports = [
@@ -11,6 +11,13 @@
     manageNetwork = true;
     manageHostName = true;
   };
+
+  # Register the container's hostname in LAN DNS. With manageNetwork = true the
+  # container uses NixOS's default dhcpcd, which sends no hostname — so the DHCP
+  # server never learns the name and <host>.<domain> won't resolve. Send the
+  # configured hostname explicitly (in an unprivileged LXC the live UTS hostname
+  # can be "nixos", so we don't rely on it).
+  networking.dhcpcd.extraConfig = "hostname ${config.networking.hostName}";
 
   # Required for unprivileged containers
   systemd.suppressedSystemUnits = [
