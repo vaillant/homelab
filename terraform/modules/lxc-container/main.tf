@@ -64,6 +64,18 @@ resource "proxmox_virtual_environment_container" "container" {
     content {
       volume = "${mount_point.value.storage}:${tonumber(regex("^(\\d+)", mount_point.value.size)[0])}"
       path   = mount_point.value.mp
+      backup = mount_point.value.backup
+    }
+  }
+
+  # Host device passthrough (e.g. /dev/dri/renderD128 for GPU hardware transcode)
+  dynamic "device_passthrough" {
+    for_each = coalesce(var.device_passthrough, [])
+    content {
+      path = device_passthrough.value.path
+      mode = device_passthrough.value.mode
+      gid  = device_passthrough.value.gid
+      uid  = device_passthrough.value.uid
     }
   }
 

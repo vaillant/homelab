@@ -89,6 +89,13 @@ variable "lxc_containers" {
       storage = string
       size    = string
       mp      = string
+      backup  = optional(bool)
+    })))
+    device_passthrough = optional(list(object({
+      path = string
+      mode = optional(string)
+      gid  = optional(number)
+      uid  = optional(number)
     })))
     features_nesting = optional(bool)
     features_fuse    = optional(bool)

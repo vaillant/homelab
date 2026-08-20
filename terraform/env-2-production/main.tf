@@ -86,6 +86,9 @@ module "lxc_containers" {
   # Additional mount points
   mountpoints = lookup(each.value, "mountpoints", {})
 
+  # Host device passthrough (e.g. GPU render node for hardware transcode)
+  device_passthrough = coalesce(each.value.device_passthrough, [])
+
   # Access
   ssh_keys = var.ssh_public_keys
 
