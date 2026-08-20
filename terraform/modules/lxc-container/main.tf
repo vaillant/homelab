@@ -63,6 +63,10 @@ resource "proxmox_virtual_environment_container" "container" {
     for_each = coalesce(var.mountpoints, {})
     content {
       volume = "${mount_point.value.storage}:${tonumber(regex("^(\\d+)", mount_point.value.size)[0])}"
+      # The provider records `size` in state; set it here too so it round-trips.
+      # Without this, size reads back as null on every plan and (being ForceNew)
+      # would replace the container — destroying the managed volume.
+      size   = mount_point.value.size
       path   = mount_point.value.mp
       backup = mount_point.value.backup
     }
@@ -93,6 +97,12 @@ resource "proxmox_virtual_environment_container" "container" {
   lifecycle {
     ignore_changes = [
       network_interface,
+      # device_passthrough is ForceNew in the provider: editing it would destroy
+      # and recreate the container, taking any managed mount-point volume (e.g.
+      # svc-jellyfin's media) with it. Ignore post-create changes so a stray edit
+      # can't wipe storage. To intentionally change passthrough, remove this line
+      # for one apply (and back up/detach the media volume first).
+      device_passthrough,
     ]
   }
 }
