@@ -82,6 +82,7 @@ lxc_containers = {
     swap             = 2048
     rootfs_size      = "16G"
     features_nesting = true # Required for NixOS
+    features_fuse    = true # Allow FUSE so rclone can mount the NAS SMB share (native cifs can't mount in an unprivileged LXC)
     networks = [{
       name   = "eth0"
       bridge = "vmbr0"

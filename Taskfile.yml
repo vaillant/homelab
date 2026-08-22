@@ -130,6 +130,10 @@ tasks:
       - echo "✓ username ({{.USERNAME}})"
       - op read "op://Homelab/VM User/password-hash" > nix/secrets/user-password-hash
       - echo "✓ user-password-hash"
+      # NAS SMB share (//host/path) for the jellyfin container. Non-secret; the
+      # username/password are pushed straight to the container by deploy-jellyfin.
+      - op read "op://Homelab/NAS Folder/share" > nix/secrets/nas-share 2>/dev/null || echo "⚠ NAS Folder/share not found (skipped)"
+      - echo "✓ nas-share"
       # Optional: Cloudflared tunnel token (skip if not configured yet)
       - op read "op://Homelab/Cloudflared/tunnel-token" > nix/secrets/cloudflared-token 2>/dev/null || echo "⚠ Cloudflared token not found (skipped)"
       # Optional: Pulse Proxmox credentials

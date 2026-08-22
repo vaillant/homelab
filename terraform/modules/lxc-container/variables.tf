@@ -131,3 +131,9 @@ variable "features_fuse" {
   type        = bool
   default     = false
 }
+
+variable "features_mount" {
+  description = "Filesystem types allowed to be mounted inside the container (e.g. [\"cifs\"]). Requires root@pam to apply."
+  type        = list(string)
+  default     = []
+}

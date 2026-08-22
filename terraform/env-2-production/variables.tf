@@ -99,6 +99,7 @@ variable "lxc_containers" {
     })))
     features_nesting = optional(bool)
     features_fuse    = optional(bool)
+    features_mount   = optional(list(string))
   }))
   default = {}
 }

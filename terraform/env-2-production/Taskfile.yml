@@ -118,9 +118,29 @@ tasks:
     cmds:
       - echo "Deploying jellyfin to root@{{.HOST}} (building on {{.BUILDER_HOST}})..."
       - |
-        # base.nix reads nix/secrets/ssh-pubkey, but `nixos-rebuild --flake` only
-        # evaluates git-tracked files, so stage it for this eval (never committed).
-        SECRETS="nix/secrets/ssh-pubkey"
+        # Push the rclone SMB credentials to the container, kept out of the nix
+        # store: username + obscured password as an EnvironmentFile for the
+        # rclone-nas service (RCLONE_CONFIG_NAS_USER / _PASS). rclone needs the
+        # password "obscured", so run `rclone obscure` locally.
+        SSHOPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+        ENVF=$(mktemp)
+        chmod 600 "$ENVF"
+        trap 'rm -f "$ENVF"' EXIT
+        NAS_USER="$(op read 'op://Homelab/NAS Folder/username')"
+        # nix-shell prints a shell-hook banner on stdout; keep only the obscured
+        # token (single line, base64url charset) so it can't corrupt the env file.
+        NAS_PASS_OBSC="$(RCLONE_PW="$(op read 'op://Homelab/NAS Folder/password')" \
+          nix-shell -p rclone --run 'rclone obscure "$RCLONE_PW"' 2>/dev/null \
+          | grep -E '^[A-Za-z0-9_-]+$' | tail -n1)"
+        printf 'RCLONE_CONFIG_NAS_USER=%s\nRCLONE_CONFIG_NAS_PASS=%s\n' "$NAS_USER" "$NAS_PASS_OBSC" > "$ENVF"
+        ssh $SSHOPTS root@{{.HOST}} "mkdir -p /etc/nixos-secrets && chmod 700 /etc/nixos-secrets && rm -f /etc/nixos-secrets/nas-credentials"
+        scp $SSHOPTS "$ENVF" root@{{.HOST}}:/etc/nixos-secrets/rclone-nas.env
+        ssh $SSHOPTS root@{{.HOST}} "chmod 600 /etc/nixos-secrets/rclone-nas.env"
+      - |
+        # base.nix reads nix/secrets/ssh-pubkey and jellyfin.nix reads
+        # nix/secrets/nas-share, but `nixos-rebuild --flake` only evaluates
+        # git-tracked files, so stage them for this eval (never committed).
+        SECRETS="nix/secrets/ssh-pubkey nix/secrets/nas-share"
         git -C ../.. add -f $SECRETS
         trap 'git -C ../.. reset -q HEAD $SECRETS' EXIT
         # NIX_SSHOPTS: fresh container isn't in ssh_config, so skip host-key checks.
@@ -128,6 +148,11 @@ tasks:
           nixos-rebuild switch --flake ../../nix#jellyfin \
             --build-host root@{{.BUILDER_HOST}} \
             --target-host root@{{.HOST}} --use-remote-sudo
+      - |
+        # Restart rclone-nas so it picks up the credentials file: a no-op rebuild
+        # won't restart the unit when only the out-of-band EnvironmentFile changed.
+        ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+          root@{{.HOST}} "systemctl restart rclone-nas"
 
   verify-jellyfin:
     desc: Verify Jellyfin web UI responds and the AMD render node is present (override with HOST=<ip>)
@@ -154,6 +179,18 @@ tasks:
           fi
         else
           echo "✗ /dev/dri/renderD128 missing — check device_passthrough / node has the iGPU"; exit 1
+        fi
+        # NAS SMB share: rclone-nas mounts it over FUSE at /srv/nas. Confirm the
+        # service is active and the mount is a fuse (rclone) filesystem.
+        if ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no "root@${FQDN}" "systemctl is-active --quiet rclone-nas && findmnt -rno FSTYPE /srv/nas | grep -q fuse"; then
+          echo "✓ NAS SMB share mounted at /srv/nas (rclone/FUSE)"
+          if ssh -o StrictHostKeyChecking=no "root@${FQDN}" "t=/srv/nas/.jellyfin-write-test.\$\$; touch \$t && rm -f \$t" 2>/dev/null; then
+            echo "✓ /srv/nas is writable"
+          else
+            echo "⚠ /srv/nas mounted but not writable — check NAS share permissions"
+          fi
+        else
+          echo "✗ NAS SMB share not mounted at /srv/nas — check the rclone-nas service, the fuse feature, and deploy"; exit 1
         fi
 
   deploy-all:

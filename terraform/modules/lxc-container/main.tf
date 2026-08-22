@@ -83,9 +83,12 @@ resource "proxmox_virtual_environment_container" "container" {
     }
   }
 
-  # Features (only nesting can be changed by non-root API tokens)
+  # Features (only nesting can be changed by non-root API tokens; fuse/mount
+  # require root@pam — the production apply task authenticates as root@pam).
   features {
     nesting = var.features_nesting
+    fuse    = var.features_fuse
+    mount   = var.features_mount
   }
 
   # Startup

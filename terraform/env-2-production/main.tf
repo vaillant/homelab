@@ -95,4 +95,5 @@ module "lxc_containers" {
   # Features
   features_nesting = lookup(each.value, "features_nesting", true)
   features_fuse    = lookup(each.value, "features_fuse", false)
+  features_mount   = coalesce(each.value.features_mount, [])
 }
