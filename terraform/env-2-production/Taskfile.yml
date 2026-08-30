@@ -124,8 +124,9 @@ tasks:
         # password "obscured", so run `rclone obscure` locally.
         SSHOPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
         ENVF=$(mktemp)
-        chmod 600 "$ENVF"
-        trap 'rm -f "$ENVF"' EXIT
+        CFF=$(mktemp)
+        chmod 600 "$ENVF" "$CFF"
+        trap 'rm -f "$ENVF" "$CFF"' EXIT
         NAS_USER="$(op read 'op://Homelab/NAS Folder/username')"
         # nix-shell prints a shell-hook banner on stdout; keep only the obscured
         # token (single line, base64url charset) so it can't corrupt the env file.
@@ -133,9 +134,13 @@ tasks:
           nix-shell -p rclone --run 'rclone obscure "$RCLONE_PW"' 2>/dev/null \
           | grep -E '^[A-Za-z0-9_-]+$' | tail -n1)"
         printf 'RCLONE_CONFIG_NAS_USER=%s\nRCLONE_CONFIG_NAS_PASS=%s\n' "$NAS_USER" "$NAS_PASS_OBSC" > "$ENVF"
+        # Cloudflare DNS API token for the ACME DNS-01 challenge (security.acme),
+        # also kept out of the nix store.
+        printf 'CF_DNS_API_TOKEN=%s\n' "$(op read 'op://Homelab/Cloudflare DNS/api-token')" > "$CFF"
         ssh $SSHOPTS root@{{.HOST}} "mkdir -p /etc/nixos-secrets && chmod 700 /etc/nixos-secrets && rm -f /etc/nixos-secrets/nas-credentials"
         scp $SSHOPTS "$ENVF" root@{{.HOST}}:/etc/nixos-secrets/rclone-nas.env
-        ssh $SSHOPTS root@{{.HOST}} "chmod 600 /etc/nixos-secrets/rclone-nas.env"
+        scp $SSHOPTS "$CFF" root@{{.HOST}}:/etc/nixos-secrets/acme-cloudflare.env
+        ssh $SSHOPTS root@{{.HOST}} "chmod 600 /etc/nixos-secrets/rclone-nas.env /etc/nixos-secrets/acme-cloudflare.env"
       - |
         # base.nix reads nix/secrets/ssh-pubkey and jellyfin.nix reads
         # nix/secrets/nas-share, but `nixos-rebuild --flake` only evaluates
@@ -168,6 +173,13 @@ tasks:
           echo "✓ Jellyfin web UI responding on :8096"
         else
           echo "✗ Jellyfin web UI not responding — run 'task production:deploy-jellyfin'"; exit 1
+        fi
+        # HTTPS: nginx reverse proxy on :443 with the Let's Encrypt cert. No -k, so
+        # curl validates the cert against the system trust store (fails if invalid).
+        if curl -fsS "https://${FQDN}/System/Info/Public" | grep -q '"Version"'; then
+          echo "✓ Jellyfin HTTPS responding on :443 with a valid certificate"
+        else
+          echo "✗ Jellyfin HTTPS/cert not working on :443 — check nginx + security.acme (acme-${FQDN}.service)"; exit 1
         fi
         # GPU: render node present and VAAPI profiles enumerable inside the container.
         if ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no "root@${FQDN}" "ls /dev/dri/renderD128" >/dev/null 2>&1; then

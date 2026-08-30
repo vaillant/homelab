@@ -25,6 +25,48 @@ in
     openFirewall = true;
   };
 
+  # HTTPS: a publicly-trusted Let's Encrypt certificate obtained via a Cloudflare
+  # DNS-01 challenge, served by an nginx reverse proxy in front of Jellyfin.
+  #
+  # DNS-01 (not HTTP-01) means no inbound port-80 exposure is needed to issue the
+  # cert. The Cloudflare API token lives in an out-of-band EnvironmentFile (not the
+  # nix store), pushed by `task production:deploy-jellyfin` — same pattern as the
+  # rclone NAS credentials below.
+  security.acme = {
+    acceptTerms    = true;
+    defaults.email = "stefan.vaillant@gmail.com";
+    certs."svc-jellyfin.svaillant.com" = {
+      dnsProvider     = "cloudflare";
+      environmentFile = "/etc/nixos-secrets/acme-cloudflare.env"; # CF_DNS_API_TOKEN=...
+      # Check the _acme-challenge TXT against a public resolver: the LAN DNS is
+      # split-horizon for svaillant.com and wouldn't see the Cloudflare record.
+      dnsResolver = "1.1.1.1:53";
+      group       = "nginx"; # let nginx read the key
+    };
+  };
+
+  # nginx terminates TLS on 443 and reverse-proxies to Jellyfin on :8096.
+  services.nginx = {
+    enable                   = true;
+    recommendedTlsSettings   = true;
+    recommendedProxySettings = true;
+    recommendedOptimisation  = true;
+    recommendedGzipSettings  = true;
+    virtualHosts."svc-jellyfin.svaillant.com" = {
+      # Use the DNS-01 cert defined above; useACMEHost (not enableACME) so nginx
+      # does NOT try to run its own HTTP-01 challenge.
+      useACMEHost = "svc-jellyfin.svaillant.com";
+      forceSSL    = true; # redirect :80 -> :443
+      locations."/" = {
+        proxyPass       = "http://127.0.0.1:8096";
+        proxyWebsockets = true; # Jellyfin uses websockets
+      };
+    };
+  };
+
+  # nginx ports — services.jellyfin.openFirewall only covers 8096/8920/1900/7359.
+  networking.firewall.allowedTCPPorts = [ 80 443 ];
+
   # AMD RDNA3 (Phoenix2) hardware transcode via VAAPI. NixOS 24.11 uses
   # hardware.graphics (formerly hardware.opengl). The radeonsi VAAPI driver
   # ships with the standard mesa build, so enabling graphics is enough.
